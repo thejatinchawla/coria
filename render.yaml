@@ -1,0 +1,16 @@
+# Render Blueprint — must live at REPO ROOT (not backend/render.yaml).
+# Dashboard → New → Blueprint → connect this repo.
+#
+# Add secrets in Render after sync:
+#   GROQ_API_KEY, TAVILY_API_KEY, SUPABASE_URL, SUPABASE_SERVICE_KEY,
+#   CORS_ORIGINS, INVOKE_SECRET, LLM_PROVIDER, LLM_MODEL
+
+services:
+  - type: web
+    name: coria-backend
+    runtime: python
+    plan: free
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
