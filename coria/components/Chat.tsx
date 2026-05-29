@@ -19,12 +19,12 @@ export function Chat({
 }) {
   const [messages, setMessages] = useState<Message[]>(initialMessages)
   const [ariaThinking, setAriaThinking] = useState(false)
+  const [sidebarOpen, setSidebarOpen] = useState(false)
 
   useEffect(() => {
     const supabase = createClient()
     let active = true
 
-    // Merge incoming rows by id (dedupe) and keep chronological order.
     const mergeMessages = (incoming: Message[]) =>
       setMessages((prev) => {
         const byId = new Map(prev.map((m) => [m.id, m]))
@@ -41,11 +41,9 @@ export function Chat({
         { event: "INSERT", schema: "public", table: "messages" },
         (payload) => {
           const next = payload.new as Message
-          // Dedupe: realtime can redeliver the same row on reconnect.
           setMessages((prev) =>
             prev.some((m) => m.id === next.id) ? prev : [...prev, next],
           )
-          // Aria's reply landed — stop showing the thinking indicator.
           if (next.sender_type === "agent" && next.sender_name === "Aria") {
             setAriaThinking(false)
           }
@@ -53,10 +51,6 @@ export function Chat({
       )
       .subscribe(async (status) => {
         if (status !== "SUBSCRIBED" || !active) return
-        // Subscribe FIRST, then fetch initial messages, then reconcile — so a
-        // row inserted between the SSR snapshot and the subscription isn't
-        // lost. mergeMessages dedupes any overlap with realtime events. (Also
-        // re-runs on reconnect, recovering anything missed while offline.)
         const { data } = await supabase
           .from("messages")
           .select("*")
@@ -70,20 +64,31 @@ export function Chat({
     }
   }, [])
 
-  // Safety net: if Aria never replies (e.g. backend down), hide the
-  // indicator after 30s so it doesn't spin forever. A delivered Aria
-  // message hides it sooner via the realtime handler above.
   useEffect(() => {
     if (!ariaThinking) return
     const timeout = setTimeout(() => setAriaThinking(false), 30000)
     return () => clearTimeout(timeout)
   }, [ariaThinking])
 
+  useEffect(() => {
+    if (!sidebarOpen) return
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setSidebarOpen(false)
+    }
+    document.addEventListener("keydown", onKeyDown)
+    return () => document.removeEventListener("keydown", onKeyDown)
+  }, [sidebarOpen])
+
   return (
-    <div className="flex h-screen bg-background text-foreground">
-      <Sidebar displayName={userDisplayName} email={userEmail} />
+    <div className="flex h-dvh overflow-hidden bg-background text-foreground">
+      <Sidebar
+        displayName={userDisplayName}
+        email={userEmail}
+        open={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
+      />
       <div className="flex min-w-0 flex-1 flex-col">
-        <ChannelHeader />
+        <ChannelHeader onMenuOpen={() => setSidebarOpen(true)} />
         <MessageList messages={messages} ariaThinking={ariaThinking} />
         <MessageInput
           senderName={userDisplayName}

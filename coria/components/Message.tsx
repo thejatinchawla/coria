@@ -14,7 +14,7 @@ export function Message({ message }: { message: MessageType }) {
   if (!isAgent) {
     return (
       <div className="flex flex-col items-end gap-1">
-        <div className="max-w-[70%] rounded-2xl rounded-br-sm bg-primary px-4 py-2 text-primary-foreground">
+        <div className="max-w-[min(85%,32rem)] rounded-2xl rounded-br-sm bg-primary px-3 py-2 text-primary-foreground sm:max-w-[70%] sm:px-4">
           <p className="text-sm whitespace-pre-wrap break-words">
             {message.content}
           </p>
@@ -28,12 +28,12 @@ export function Message({ message }: { message: MessageType }) {
   }
 
   return (
-    <div className="flex gap-3">
-      <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary/20 text-sm font-medium">
+    <div className="flex gap-2 sm:gap-3">
+      <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/20 text-xs font-medium sm:size-10 sm:text-sm">
         {message.sender_name?.charAt(0).toUpperCase() ?? "?"}
       </div>
-      <div className="flex max-w-[70%] flex-col gap-1">
-        <div className="flex items-baseline gap-2">
+      <div className="flex min-w-0 max-w-[min(85%,32rem)] flex-1 flex-col gap-1 sm:max-w-[70%]">
+        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
           <span className="text-xs text-muted-foreground">
             {message.sender_name}
           </span>
@@ -42,7 +42,7 @@ export function Message({ message }: { message: MessageType }) {
             className="text-xs text-muted-foreground/70"
           />
         </div>
-        <div className="rounded-2xl rounded-tl-sm bg-muted px-4 py-2">
+        <div className="rounded-2xl rounded-tl-sm bg-muted px-3 py-2 sm:px-4">
           <p className="text-sm whitespace-pre-wrap break-words">
             {message.content}
           </p>

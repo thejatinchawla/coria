@@ -1,11 +1,23 @@
-export function ChannelHeader() {
+import { Menu } from "lucide-react"
+
+export function ChannelHeader({ onMenuOpen }: { onMenuOpen: () => void }) {
   return (
-    <header className="flex h-14 shrink-0 flex-col justify-center border-b px-6">
-      <div className="flex items-baseline gap-2">
-        <span className="text-sm font-semibold text-muted-foreground">
+    <header className="flex h-14 shrink-0 items-center border-b px-3 sm:px-6">
+      <button
+        type="button"
+        aria-label="Open menu"
+        onClick={onMenuOpen}
+        className="-ml-1 rounded-md p-2 text-muted-foreground hover:bg-muted md:hidden"
+      >
+        <Menu className="size-5" />
+      </button>
+      <div className="flex min-w-0 items-baseline gap-2">
+        <span className="truncate text-sm font-semibold text-muted-foreground">
           #general
         </span>
-        <span className="text-xs text-muted-foreground/70">Coria</span>
+        <span className="hidden text-xs text-muted-foreground/70 sm:inline">
+          Coria
+        </span>
       </div>
     </header>
   )

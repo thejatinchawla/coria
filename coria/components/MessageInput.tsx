@@ -1,7 +1,9 @@
 "use client"
 
 import { useMemo, useRef, useState } from "react"
+import { Send } from "lucide-react"
 import { createClient } from "@/lib/supabase"
+import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
 const ARIA_MENTION = "@aria"
@@ -27,6 +29,7 @@ export function MessageInput({
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   const showAriaHint = useMemo(() => isPartialAriaMention(text), [text])
+  const canSend = text.trim().length > 0 && !sending
 
   async function send() {
     const content = text.trim()
@@ -108,7 +111,7 @@ export function MessageInput({
         e.preventDefault()
         void send()
       }}
-      className="shrink-0 border-t px-6 py-4"
+      className="shrink-0 border-t px-3 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-6 sm:py-4"
     >
       <div className="relative mx-auto max-w-3xl">
         {showAriaHint && (
@@ -145,18 +148,29 @@ export function MessageInput({
           </div>
         )}
 
-        <textarea
-          ref={textareaRef}
-          value={text}
-          onChange={handleChange}
-          onKeyDown={handleKeyDown}
-          rows={1}
-          placeholder="Message #general — type @aria to ask the agent"
-          disabled={sending}
-          aria-autocomplete="list"
-          aria-controls={showAriaHint ? "aria-mention-hint" : undefined}
-          className="flex w-full resize-none rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50"
-        />
+        <div className="flex items-end gap-2">
+          <textarea
+            ref={textareaRef}
+            value={text}
+            onChange={handleChange}
+            onKeyDown={handleKeyDown}
+            rows={1}
+            placeholder="Message #general — @aria to ask"
+            disabled={sending}
+            aria-autocomplete="list"
+            aria-controls={showAriaHint ? "aria-mention-hint" : undefined}
+            className="flex min-h-9 flex-1 resize-none rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50"
+          />
+          <Button
+            type="submit"
+            size="icon"
+            disabled={!canSend}
+            aria-label="Send message"
+            className="size-9 shrink-0"
+          >
+            <Send className="size-4" />
+          </Button>
+        </div>
       </div>
     </form>
   )

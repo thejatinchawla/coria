@@ -1,8 +1,8 @@
 export function AriaThinking() {
   return (
-    <div className="flex gap-3">
+    <div className="flex gap-2 sm:gap-3">
       {/* Mirrors Aria's message avatar so it reads as an incoming message. */}
-      <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary/20 text-sm font-medium">
+      <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/20 text-xs font-medium sm:size-10 sm:text-sm">
         A
       </div>
       <div className="flex items-center gap-2">
