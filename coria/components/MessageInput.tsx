@@ -49,9 +49,7 @@ export function MessageInput({
     const mentionMatch = content.match(/^@aria\s+([\s\S]+)/i)
     if (mentionMatch) {
       const userMessage = mentionMatch[1]
-      const backendUrl =
-        process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000"
-      fetch(`${backendUrl}/invoke`, {
+      fetch("/api/invoke", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ user_message: userMessage }),
