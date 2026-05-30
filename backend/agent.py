@@ -13,7 +13,7 @@ from memory.embed import embed_message_row
 from memory.retrieve import retrieve_channel_memory
 from prompts import ARIA_SYSTEM_PROMPT
 from serialization import serialize_messages
-from tools import TOOL_DEFINITIONS, TOOL_REGISTRY
+from tools import TOOL_DEFINITIONS, TOOL_REGISTRY, tools_for_agent
 
 # Hard cap on the agentic loop. With tools running this is the primary guard
 # against an infinite call -> tool -> call cycle, which is the #1 cost/abuse risk.
@@ -206,6 +206,7 @@ async def run_groq_loop(
     messages: list[dict],
     trace_id: str | None,
     system_prompt: str = ARIA_SYSTEM_PROMPT,
+    tool_defs: list[dict] | None = None,
 ) -> tuple[str, list[dict]]:
     """Agentic loop for the Groq (default, free) provider, using OpenAI-style
     function calling.
@@ -227,10 +228,11 @@ async def run_groq_loop(
         {"role": "system", "content": system_prompt}
     ] + serialize_messages(messages)
 
+    active_tools = tool_defs if tool_defs is not None else TOOL_DEFINITIONS
     for _ in range(MAX_AGENT_ITERATIONS):
         kwargs = {"model": model, "messages": working, "max_tokens": 1024}
-        if TOOL_DEFINITIONS:
-            kwargs["tools"] = TOOL_DEFINITIONS
+        if active_tools:
+            kwargs["tools"] = active_tools
             kwargs["tool_choice"] = "auto"
 
         try:
@@ -445,11 +447,12 @@ async def invoke_agent(user_message: str, channel_id: str, agent_id: str) -> Non
             recent_messages=recent_messages,
         )
         messages = serialize_messages([{"role": "user", "content": user_message}])
+        agent_tools = tools_for_agent(agent)
         provider = os.getenv("LLM_PROVIDER", "groq")
         try:
             if provider == "groq":
                 reply, tool_steps = await run_groq_loop(
-                    messages, trace_id, system_prompt
+                    messages, trace_id, system_prompt, agent_tools
                 )
             elif provider == "anthropic":
                 reply, tool_steps = await run_anthropic_loop(

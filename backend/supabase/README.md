@@ -37,3 +37,13 @@ curl -X POST http://localhost:8000/memory/backfill \
 ```
 
 New human messages auto-embed via `/api/memory/embed`. Agent replies embed in `invoke_agent`.
+
+## M3 — Streaming + polish
+
+- `@aria` uses SSE: `POST /api/invoke/stream` → backend `/invoke/stream`
+- Error toasts on send/invoke failures
+- `github_read` tool (public repos; optional `GITHUB_TOKEN` in backend `.env`)
+
+```bash
+cd backend && supabase db push   # adds github_read to Aria allowed_tools
+```

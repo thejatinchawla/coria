@@ -3,10 +3,12 @@ import os
 from dotenv import load_dotenv
 from fastapi import BackgroundTasks, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from agent import invoke_agent
 from db import get_supabase
+from invoke_stream import invoke_agent_stream
 from memory.embed import backfill_channel_memory, embed_message_by_id
 
 load_dotenv()
@@ -103,6 +105,23 @@ async def invoke(
         req.agent_id,
     )
     return {"status": "accepted"}
+
+
+@app.post("/invoke/stream")
+async def invoke_stream(
+    req: InvokeRequest,
+    x_invoke_secret: str | None = Header(default=None),
+):
+    verify_invoke_secret(x_invoke_secret)
+    return StreamingResponse(
+        invoke_agent_stream(req.user_message, req.channel_id, req.agent_id),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @app.post("/memory/embed")

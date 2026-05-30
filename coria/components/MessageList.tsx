@@ -4,13 +4,16 @@ import { useEffect, useRef } from "react"
 import type { Message as MessageType } from "@/types"
 import { Message } from "@/components/Message"
 import { AriaThinking } from "@/components/AriaThinking"
+import { StreamingMessage } from "@/components/StreamingMessage"
 
 export function MessageList({
   messages,
-  ariaThinking,
+  streamState,
+  ariaName = "Aria",
 }: {
   messages: MessageType[]
-  ariaThinking: boolean
+  streamState?: { content: string; status?: string } | null
+  ariaName?: string
 }) {
   const bottomRef = useRef<HTMLDivElement>(null)
   const isFirstRender = useRef(true)
@@ -20,9 +23,9 @@ export function MessageList({
       behavior: isFirstRender.current ? "instant" : "smooth",
     })
     isFirstRender.current = false
-  }, [messages, ariaThinking])
+  }, [messages, streamState])
 
-  if (messages.length === 0) {
+  if (messages.length === 0 && !streamState) {
     return (
       <div className="flex flex-1 items-center justify-center">
         <p className="text-sm text-muted-foreground">No messages yet. Say hi 👋</p>
@@ -36,7 +39,17 @@ export function MessageList({
         {messages.map((message) => (
           <Message key={message.id} message={message} />
         ))}
-        {ariaThinking && <AriaThinking />}
+        {streamState &&
+          (streamState.content ? (
+            <StreamingMessage
+              senderName={ariaName}
+              content={streamState.content}
+            />
+          ) : (
+            <AriaThinking
+              message={streamState.status ?? "Aria is thinking…"}
+            />
+          ))}
         <div ref={bottomRef} />
       </div>
     </div>

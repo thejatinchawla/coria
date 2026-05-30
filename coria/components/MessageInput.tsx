@@ -3,6 +3,8 @@
 import { useMemo, useRef, useState } from "react"
 import { Send } from "lucide-react"
 import { createClient } from "@/lib/supabase"
+import { streamInvoke } from "@/lib/stream-invoke"
+import { useToast } from "@/components/Toast"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
@@ -21,14 +23,23 @@ export function MessageInput({
   channelSlug,
   agentId,
   senderName,
-  onAriaThinking,
+  onStreamStart,
+  onStreamStatus,
+  onStreamToken,
+  onStreamEnd,
+  onStreamError,
 }: {
   channelId: string
   channelSlug: string
   agentId: string
   senderName: string
-  onAriaThinking?: () => void
+  onStreamStart?: () => void
+  onStreamStatus?: (status: string) => void
+  onStreamToken?: (token: string) => void
+  onStreamEnd?: () => void
+  onStreamError?: () => void
 }) {
+  const { toast } = useToast()
   const [text, setText] = useState("")
   const [sending, setSending] = useState(false)
   const [hintIndex, setHintIndex] = useState(0)
@@ -53,10 +64,10 @@ export function MessageInput({
       })
       .select("id")
       .single()
-    setSending(false)
 
     if (error) {
-      console.error("Failed to send message:", error.message)
+      setSending(false)
+      toast(`Could not send message: ${error.message}`)
       return
     }
 
@@ -65,24 +76,39 @@ export function MessageInput({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message_id: inserted.id }),
-      }).catch((err) => console.error("Memory embed failed:", err))
+      }).catch(() => {
+        /* non-blocking */
+      })
     }
 
     const mentionMatch = content.match(/^@aria\s+([\s\S]+)/i)
     if (mentionMatch) {
       const userMessage = mentionMatch[1]
-      fetch("/api/invoke", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          user_message: userMessage,
-          channel_id: channelId,
-          agent_id: agentId,
-        }),
-      }).catch((err) => console.error("Invoke failed:", err))
-      onAriaThinking?.()
+      onStreamStart?.()
+      try {
+        await streamInvoke(
+          {
+            user_message: userMessage,
+            channel_id: channelId,
+            agent_id: agentId,
+          },
+          {
+            onStatus: onStreamStatus,
+            onToken: onStreamToken,
+            onError: (message) => {
+              toast(message)
+              onStreamError?.()
+            },
+          },
+        )
+      } catch {
+        onStreamError?.()
+      } finally {
+        onStreamEnd?.()
+      }
     }
 
+    setSending(false)
     setText("")
     setHintIndex(0)
     if (textareaRef.current) textareaRef.current.style.height = "auto"

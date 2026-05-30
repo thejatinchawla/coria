@@ -9,6 +9,11 @@ import { MessageList } from "@/components/MessageList"
 import { MessageInput } from "@/components/MessageInput"
 import { Sidebar } from "@/components/Sidebar"
 
+type StreamState = {
+  content: string
+  status?: string
+}
+
 export function Chat({
   workspace,
   channel,
@@ -29,7 +34,7 @@ export function Chat({
   const router = useRouter()
   const [messages, setMessages] = useState<Message[]>(initialMessages)
   const [channelList, setChannelList] = useState(channels)
-  const [ariaThinking, setAriaThinking] = useState(false)
+  const [streamState, setStreamState] = useState<StreamState | null>(null)
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
   useEffect(() => {
@@ -39,6 +44,10 @@ export function Chat({
   useEffect(() => {
     setChannelList(channels)
   }, [channels])
+
+  useEffect(() => {
+    setStreamState(null)
+  }, [channel.id])
 
   useEffect(() => {
     const supabase = createClient()
@@ -71,7 +80,7 @@ export function Chat({
             prev.some((m) => m.id === next.id) ? prev : [...prev, next],
           )
           if (next.sender_type === "agent") {
-            setAriaThinking(false)
+            setStreamState(null)
           }
         },
       )
@@ -92,10 +101,10 @@ export function Chat({
   }, [channel.id])
 
   useEffect(() => {
-    if (!ariaThinking) return
-    const timeout = setTimeout(() => setAriaThinking(false), 30000)
+    if (!streamState) return
+    const timeout = setTimeout(() => setStreamState(null), 120000)
     return () => clearTimeout(timeout)
-  }, [ariaThinking])
+  }, [streamState])
 
   useEffect(() => {
     if (!sidebarOpen) return
@@ -133,13 +142,33 @@ export function Chat({
           workspaceName={workspace.name}
           onMenuOpen={() => setSidebarOpen(true)}
         />
-        <MessageList messages={messages} ariaThinking={ariaThinking} />
+        <MessageList
+          messages={messages}
+          streamState={streamState}
+          ariaName="Aria"
+        />
         <MessageInput
           channelId={channel.id}
           channelSlug={channel.slug}
           agentId={agentId}
           senderName={userDisplayName}
-          onAriaThinking={() => setAriaThinking(true)}
+          onStreamStart={() =>
+            setStreamState({ content: "", status: "Aria is thinking…" })
+          }
+          onStreamStatus={(status) =>
+            setStreamState((s) =>
+              s ? { ...s, status } : { content: "", status },
+            )
+          }
+          onStreamToken={(token) =>
+            setStreamState((s) =>
+              s
+                ? { content: s.content + token, status: undefined }
+                : { content: token },
+            )
+          }
+          onStreamEnd={() => setStreamState(null)}
+          onStreamError={() => setStreamState(null)}
         />
       </div>
     </div>
