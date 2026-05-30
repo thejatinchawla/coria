@@ -2,8 +2,38 @@
 
 export type SenderType = "human" | "agent"
 
+export type MemberRole = "owner" | "member"
+export type ChannelType = "hybrid" | "human_only"
+export type AgentStatus = "active" | "paused"
+
+export type Workspace = {
+  id: string
+  name: string
+  slug: string
+  created_at: string
+}
+
+export type Channel = {
+  id: string
+  workspace_id: string
+  name: string
+  slug: string
+  type: ChannelType
+  created_at: string
+}
+
+export type Agent = {
+  id: string
+  workspace_id: string
+  name: string
+  mention_slug: string
+  status: AgentStatus
+}
+
 export type Message = {
   id: string
+  channel_id: string
+  sender_id: string | null
   sender_name: string
   sender_type: SenderType
   content: string

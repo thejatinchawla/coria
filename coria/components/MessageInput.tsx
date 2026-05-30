@@ -17,9 +17,15 @@ function isPartialAriaMention(text: string): boolean {
 }
 
 export function MessageInput({
+  channelId,
+  channelSlug,
+  agentId,
   senderName,
   onAriaThinking,
 }: {
+  channelId: string
+  channelSlug: string
+  agentId: string
   senderName: string
   onAriaThinking?: () => void
 }) {
@@ -37,16 +43,29 @@ export function MessageInput({
 
     setSending(true)
     const supabase = createClient()
-    const { error } = await supabase.from("messages").insert({
-      sender_name: senderName,
-      sender_type: "human",
-      content,
-    })
+    const { data: inserted, error } = await supabase
+      .from("messages")
+      .insert({
+        channel_id: channelId,
+        sender_name: senderName,
+        sender_type: "human",
+        content,
+      })
+      .select("id")
+      .single()
     setSending(false)
 
     if (error) {
       console.error("Failed to send message:", error.message)
       return
+    }
+
+    if (inserted?.id) {
+      fetch("/api/memory/embed", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message_id: inserted.id }),
+      }).catch((err) => console.error("Memory embed failed:", err))
     }
 
     const mentionMatch = content.match(/^@aria\s+([\s\S]+)/i)
@@ -55,7 +74,11 @@ export function MessageInput({
       fetch("/api/invoke", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user_message: userMessage }),
+        body: JSON.stringify({
+          user_message: userMessage,
+          channel_id: channelId,
+          agent_id: agentId,
+        }),
       }).catch((err) => console.error("Invoke failed:", err))
       onAriaThinking?.()
     }
@@ -155,7 +178,7 @@ export function MessageInput({
             onChange={handleChange}
             onKeyDown={handleKeyDown}
             rows={1}
-            placeholder="Message #general — @aria to ask"
+            placeholder={`Message #${channelSlug} — @aria to ask`}
             disabled={sending}
             aria-autocomplete="list"
             aria-controls={showAriaHint ? "aria-mention-hint" : undefined}

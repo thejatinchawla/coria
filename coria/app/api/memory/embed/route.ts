@@ -11,25 +11,16 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
-  let body: { user_message?: string; channel_id?: string; agent_id?: string }
+  let body: { message_id?: string }
   try {
     body = await request.json()
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 })
   }
 
-  const userMessage = body.user_message?.trim()
-  const channelId = body.channel_id?.trim()
-  const agentId = body.agent_id?.trim()
-
-  if (!userMessage) {
-    return NextResponse.json({ error: "user_message is required" }, { status: 400 })
-  }
-  if (!channelId) {
-    return NextResponse.json({ error: "channel_id is required" }, { status: 400 })
-  }
-  if (!agentId) {
-    return NextResponse.json({ error: "agent_id is required" }, { status: 400 })
+  const messageId = body.message_id?.trim()
+  if (!messageId) {
+    return NextResponse.json({ error: "message_id is required" }, { status: 400 })
   }
 
   const backendUrl = process.env.BACKEND_URL || "http://localhost:8000"
@@ -43,20 +34,16 @@ export async function POST(request: Request) {
   }
 
   try {
-    const response = await fetch(`${backendUrl}/invoke`, {
+    const response = await fetch(`${backendUrl}/memory/embed`, {
       method: "POST",
       headers,
-      body: JSON.stringify({
-        user_message: userMessage,
-        channel_id: channelId,
-        agent_id: agentId,
-      }),
+      body: JSON.stringify({ message_id: messageId }),
     })
 
     if (!response.ok) {
       const detail = await response.text()
       return NextResponse.json(
-        { error: "Backend invoke failed", detail },
+        { error: "Backend embed failed", detail },
         { status: response.status },
       )
     }

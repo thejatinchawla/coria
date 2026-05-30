@@ -49,6 +49,7 @@ export async function middleware(request: NextRequest) {
     if (user && pathname === "/login") {
       const url = request.nextUrl.clone()
       url.pathname = "/"
+      url.searchParams.set("channel", "general")
       const redirect = NextResponse.redirect(url)
       supabaseResponse.cookies.getAll().forEach((cookie) => {
         redirect.cookies.set(cookie.name, cookie.value)

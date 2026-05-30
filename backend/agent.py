@@ -1,12 +1,16 @@
 import json
 import os
+import re
 import traceback
 from datetime import datetime, timezone
 
 from anthropic import AsyncAnthropic
-from groq import AsyncGroq
+from groq import AsyncGroq, BadRequestError
 
 from db import get_supabase
+from domain import fetch_agent, fetch_channel, validate_invoke_scope
+from memory.embed import embed_message_row
+from memory.retrieve import retrieve_channel_memory
 from prompts import ARIA_SYSTEM_PROMPT
 from serialization import serialize_messages
 from tools import TOOL_DEFINITIONS, TOOL_REGISTRY
@@ -14,18 +18,22 @@ from tools import TOOL_DEFINITIONS, TOOL_REGISTRY
 # Hard cap on the agentic loop. With tools running this is the primary guard
 # against an infinite call -> tool -> call cycle, which is the #1 cost/abuse risk.
 MAX_AGENT_ITERATIONS = 5
-RECENT_MESSAGE_LIMIT = 10
+RECENT_MESSAGE_LIMIT = 3
+RECENT_FALLBACK_LIMIT = 8
 
 
 def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def fetch_recent_messages(supabase, limit: int = RECENT_MESSAGE_LIMIT) -> list[dict]:
+def fetch_recent_messages(
+    supabase, channel_id: str, limit: int = RECENT_MESSAGE_LIMIT
+) -> list[dict]:
     """Load the last N channel messages for prompt context (no vectors)."""
     result = (
         supabase.table("messages")
         .select("sender_name,sender_type,content,created_at")
+        .eq("channel_id", channel_id)
         .order("created_at", desc=True)
         .limit(limit)
         .execute()
@@ -35,21 +43,50 @@ def fetch_recent_messages(supabase, limit: int = RECENT_MESSAGE_LIMIT) -> list[d
     return rows
 
 
-def build_system_prompt(recent_messages: list[dict]) -> str:
-    if not recent_messages:
-        return ARIA_SYSTEM_PROMPT
-
-    lines = [
+def _format_message_lines(rows: list[dict]) -> str:
+    return "\n".join(
         f"{row.get('sender_name', '?')}: {row.get('content', '')}"
-        for row in recent_messages
-    ]
-    history = "\n".join(lines)
-    return (
-        f"{ARIA_SYSTEM_PROMPT}\n\n"
-        f"Recent channel messages (oldest first):\n{history}\n\n"
-        "The latest @mention from a teammate is your immediate task. "
-        "Use channel history for context; use web_search when you need current facts."
+        for row in rows
     )
+
+
+def _format_memory_chunks(chunks: list[dict]) -> str:
+    lines: list[str] = []
+    for chunk in chunks:
+        meta = chunk.get("metadata") or {}
+        who = meta.get("sender_name") or "?"
+        when = meta.get("created_at") or ""
+        sim = chunk.get("similarity")
+        score = f" (relevance {sim:.2f})" if sim is not None else ""
+        lines.append(f"[{when}] {who}{score}: {chunk.get('content', '')}")
+    return "\n".join(lines)
+
+
+def build_system_prompt(
+    base_prompt: str = ARIA_SYSTEM_PROMPT,
+    memory_chunks: list[dict] | None = None,
+    recent_messages: list[dict] | None = None,
+) -> str:
+    parts = [base_prompt]
+
+    if memory_chunks:
+        parts.append(
+            "Relevant channel history (retrieved from memory):\n"
+            + _format_memory_chunks(memory_chunks)
+        )
+
+    if recent_messages:
+        parts.append(
+            "Very recent messages (oldest first):\n"
+            + _format_message_lines(recent_messages)
+        )
+
+    parts.append(
+        "The latest @mention from a teammate is your immediate task. "
+        "Prefer retrieved history for older context; use very recent messages "
+        "for what just happened; use web_search when you need current facts."
+    )
+    return "\n\n".join(parts)
 
 
 def _tool_result_content(result) -> str:
@@ -83,6 +120,88 @@ def _extract_anthropic_text(content) -> str:
     return next((b.text for b in content if b.type == "text"), "")
 
 
+_GROQ_FAILED_TOOL_RE = re.compile(
+    r"<function=(\w+)\s*(\{.*?\})\s*</function>",
+    re.DOTALL,
+)
+
+
+def _parse_groq_tool_use_failed(error: BadRequestError) -> tuple[str, dict] | None:
+    """Groq sometimes rejects a tool call when the model emits XML-style syntax
+    instead of structured tool_calls. Parse failed_generation and recover."""
+    try:
+        body = error.response.json()
+    except Exception:
+        return None
+    err = body.get("error") or {}
+    if err.get("code") != "tool_use_failed":
+        return None
+    failed = err.get("failed_generation") or ""
+    match = _GROQ_FAILED_TOOL_RE.search(failed)
+    if not match:
+        return None
+    try:
+        return match.group(1), json.loads(match.group(2))
+    except json.JSONDecodeError:
+        return None
+
+
+async def _run_groq_tool(
+    name: str,
+    args: dict,
+    tool_call_id: str,
+    working: list[dict],
+    steps: list[dict],
+) -> None:
+    """Execute one tool call and append assistant + tool messages to the loop."""
+    working.append(
+        {
+            "role": "assistant",
+            "content": None,
+            "tool_calls": [
+                {
+                    "id": tool_call_id,
+                    "type": "function",
+                    "function": {
+                        "name": name,
+                        "arguments": json.dumps(args),
+                    },
+                }
+            ],
+        }
+    )
+    steps.append(
+        {
+            "type": "tool_call_proposed",
+            "tool": name,
+            "input": args,
+            "timestamp": now_iso(),
+        }
+    )
+
+    tool_fn = TOOL_REGISTRY.get(name)
+    if tool_fn is None:
+        result = {"error": f"unknown tool: {name}"}
+    else:
+        result = await tool_fn(args)
+
+    steps.append(
+        {
+            "type": "tool_result",
+            "tool": name,
+            "result": result,
+            "timestamp": now_iso(),
+        }
+    )
+    working.append(
+        {
+            "role": "tool",
+            "tool_call_id": tool_call_id,
+            "content": _tool_result_content(result),
+        }
+    )
+
+
 async def run_groq_loop(
     messages: list[dict],
     trace_id: str | None,
@@ -114,7 +233,26 @@ async def run_groq_loop(
             kwargs["tools"] = TOOL_DEFINITIONS
             kwargs["tool_choice"] = "auto"
 
-        response = await client.chat.completions.create(**kwargs)
+        try:
+            response = await client.chat.completions.create(**kwargs)
+        except BadRequestError as e:
+            recovered = _parse_groq_tool_use_failed(e)
+            if recovered is None:
+                raise
+            name, args = recovered
+            print(
+                f"[groq] recovered malformed tool call: {name}({args})",
+                flush=True,
+            )
+            await _run_groq_tool(
+                name,
+                args,
+                f"recovered_{len(steps)}",
+                working,
+                steps,
+            )
+            continue
+
         usage = response.usage
         print(
             f"[tokens] provider=groq model={model} "
@@ -149,41 +287,12 @@ async def run_groq_loop(
         )
 
         for tc in tool_calls:
-            name = tc.function.name
             try:
                 args = json.loads(tc.function.arguments or "{}")
             except json.JSONDecodeError:
                 args = {}
-
-            steps.append(
-                {
-                    "type": "tool_call_proposed",
-                    "tool": name,
-                    "input": args,
-                    "timestamp": now_iso(),
-                }
-            )
-
-            tool_fn = TOOL_REGISTRY.get(name)
-            if tool_fn is None:
-                result = {"error": f"unknown tool: {name}"}
-            else:
-                result = await tool_fn(args)
-
-            steps.append(
-                {
-                    "type": "tool_result",
-                    "tool": name,
-                    "result": result,
-                    "timestamp": now_iso(),
-                }
-            )
-            working.append(
-                {
-                    "role": "tool",
-                    "tool_call_id": tc.id,
-                    "content": _tool_result_content(result),
-                }
+            await _run_groq_tool(
+                tc.function.name, args, tc.id, working, steps
             )
         # Loop back so the model can use the tool results.
     else:
@@ -277,7 +386,12 @@ async def run_anthropic_loop(
         return "I got stuck in a loop, sorry.", steps
 
 
-async def invoke_agent(user_message: str) -> None:
+def agent_system_prompt(agent: dict) -> str:
+    prompt = (agent.get("system_prompt") or "").strip()
+    return prompt or ARIA_SYSTEM_PROMPT
+
+
+async def invoke_agent(user_message: str, channel_id: str, agent_id: str) -> None:
     """Run Aria for one user message: create a reasoning trace, run the model
     through its provider loop, finalize the trace, then post the reply linked to
     that trace.
@@ -292,8 +406,16 @@ async def invoke_agent(user_message: str) -> None:
     """
     trace_id: str | None = None
     supabase = None
+    aria_name = "Aria"
+    aria_agent_id: str | None = None
     try:
         supabase = get_supabase()
+
+        channel = fetch_channel(supabase, channel_id)
+        agent = fetch_agent(supabase, agent_id)
+        validate_invoke_scope(agent, channel)
+        aria_name = agent.get("name") or "Aria"
+        aria_agent_id = agent.get("id")
 
         # 1. Create the trace up front. Its own try/except: a DB hiccup here must
         #    not stop us from at least posting a (trace-less) reply.
@@ -307,9 +429,21 @@ async def invoke_agent(user_message: str) -> None:
         except Exception as e:
             print(f"[error] failed to create reasoning trace: {e}", flush=True)
 
-        # 2. Build prompt context from recent channel history, then run the model.
-        recent_messages = fetch_recent_messages(supabase)
-        system_prompt = build_system_prompt(recent_messages)
+        # 2. RAG retrieve + slim recent fallback, then run the model.
+        memory_chunks = retrieve_channel_memory(
+            supabase, channel_id, user_message
+        )
+        recent_limit = (
+            RECENT_MESSAGE_LIMIT if memory_chunks else RECENT_FALLBACK_LIMIT
+        )
+        recent_messages = fetch_recent_messages(
+            supabase, channel_id, limit=recent_limit
+        )
+        system_prompt = build_system_prompt(
+            base_prompt=agent_system_prompt(agent),
+            memory_chunks=memory_chunks,
+            recent_messages=recent_messages,
+        )
         messages = serialize_messages([{"role": "user", "content": user_message}])
         provider = os.getenv("LLM_PROVIDER", "groq")
         try:
@@ -344,14 +478,29 @@ async def invoke_agent(user_message: str) -> None:
                 print(f"[error] failed to update reasoning trace: {e}", flush=True)
 
         # 4. Post the message last, linked to the trace (null if creation failed).
-        supabase.table("messages").insert(
-            {
-                "sender_name": "Aria",
-                "sender_type": "agent",
-                "content": reply,
-                "reasoning_trace_id": trace_id,
-            }
-        ).execute()
+        msg_result = (
+            supabase.table("messages")
+            .insert(
+                {
+                    "channel_id": channel_id,
+                    "sender_id": aria_agent_id,
+                    "sender_name": aria_name,
+                    "sender_type": "agent",
+                    "content": reply,
+                    "reasoning_trace_id": trace_id,
+                }
+            )
+            .execute()
+        )
+        if msg_result.data:
+            try:
+                embed_message_row(
+                    supabase,
+                    msg_result.data[0],
+                    channel["workspace_id"],
+                )
+            except Exception as e:
+                print(f"[memory] agent reply embed failed: {e}", flush=True)
 
     except Exception:
         # Last-resort guard. Nothing above should escape, but if it does, log the
@@ -380,7 +529,9 @@ async def invoke_agent(user_message: str) -> None:
             try:
                 supabase.table("messages").insert(
                     {
-                        "sender_name": "Aria",
+                        "channel_id": channel_id,
+                        "sender_id": aria_agent_id,
+                        "sender_name": aria_name,
                         "sender_type": "agent",
                         "content": "Sorry — I hit an error trying to respond.",
                         "reasoning_trace_id": trace_id,

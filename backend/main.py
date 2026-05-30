@@ -7,6 +7,7 @@ from pydantic import BaseModel
 
 from agent import invoke_agent
 from db import get_supabase
+from memory.embed import backfill_channel_memory, embed_message_by_id
 
 load_dotenv()
 
@@ -57,6 +58,16 @@ INVOKE_SECRET = os.getenv("INVOKE_SECRET", "").strip()
 
 class InvokeRequest(BaseModel):
     user_message: str
+    channel_id: str
+    agent_id: str
+
+
+class EmbedMessageRequest(BaseModel):
+    message_id: str
+
+
+class BackfillChannelRequest(BaseModel):
+    channel_id: str
 
 
 def verify_invoke_secret(x_invoke_secret: str | None) -> None:
@@ -85,5 +96,32 @@ async def invoke(
     x_invoke_secret: str | None = Header(default=None),
 ):
     verify_invoke_secret(x_invoke_secret)
-    background_tasks.add_task(invoke_agent, req.user_message)
+    background_tasks.add_task(
+        invoke_agent,
+        req.user_message,
+        req.channel_id,
+        req.agent_id,
+    )
+    return {"status": "accepted"}
+
+
+@app.post("/memory/embed")
+async def memory_embed(
+    req: EmbedMessageRequest,
+    background_tasks: BackgroundTasks,
+    x_invoke_secret: str | None = Header(default=None),
+):
+    verify_invoke_secret(x_invoke_secret)
+    background_tasks.add_task(embed_message_by_id, req.message_id)
+    return {"status": "accepted"}
+
+
+@app.post("/memory/backfill")
+async def memory_backfill(
+    req: BackfillChannelRequest,
+    background_tasks: BackgroundTasks,
+    x_invoke_secret: str | None = Header(default=None),
+):
+    verify_invoke_secret(x_invoke_secret)
+    background_tasks.add_task(backfill_channel_memory, req.channel_id)
     return {"status": "accepted"}

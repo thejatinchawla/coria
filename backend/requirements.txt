@@ -6,3 +6,4 @@ groq==0.11.0
 supabase==2.9.0
 pydantic==2.9.2
 httpx==0.27.2
+fastembed==0.7.4

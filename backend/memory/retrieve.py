@@ -1,0 +1,112 @@
+"""RAG retrieval: pgvector similarity + recency rerank + token budget."""
+
+import os
+import traceback
+from datetime import datetime, timezone
+from typing import Any
+
+from memory.embed import embed_texts
+
+RAG_TOP_K = int(os.getenv("RAG_TOP_K", "8"))
+RAG_MAX_CONTEXT_TOKENS = int(os.getenv("RAG_MAX_CONTEXT_TOKENS", "4000"))
+RAG_MIN_SIMILARITY = float(os.getenv("RAG_MIN_SIMILARITY", "0.7"))
+
+
+def estimate_tokens(text: str) -> int:
+    return max(1, len(text) // 4)
+
+
+def trim_to_token_budget(
+    chunks: list[dict[str, Any]],
+    max_tokens: int = RAG_MAX_CONTEXT_TOKENS,
+) -> list[dict[str, Any]]:
+    total = 0
+    kept: list[dict[str, Any]] = []
+    for chunk in chunks:
+        content = chunk.get("content") or ""
+        cost = estimate_tokens(content)
+        if total + cost > max_tokens:
+            break
+        total += cost
+        kept.append(chunk)
+    return kept
+
+
+def _parse_ts(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def rerank_with_recency(chunks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    now = datetime.now(timezone.utc)
+    scored: list[tuple[float, dict[str, Any]]] = []
+    for chunk in chunks:
+        sim = float(chunk.get("similarity") or 0)
+        created = _parse_ts((chunk.get("metadata") or {}).get("created_at"))
+        recency = 0.5
+        if created:
+            age_hours = max(0.0, (now - created).total_seconds() / 3600)
+            recency = max(0.0, 1.0 - age_hours / (24 * 30))
+        score = sim * 0.85 + recency * 0.15
+        scored.append((score, chunk))
+    scored.sort(key=lambda x: -x[0])
+    return [c for _, c in scored]
+
+
+def retrieve_channel_memory(
+    supabase,
+    channel_id: str,
+    query: str,
+    *,
+    top_k: int = RAG_TOP_K,
+    min_similarity: float = RAG_MIN_SIMILARITY,
+    max_tokens: int = RAG_MAX_CONTEXT_TOKENS,
+) -> list[dict[str, Any]]:
+    """Return ranked memory chunks for prompt injection."""
+    text = query.strip()
+    if not text:
+        return []
+
+    try:
+        query_embedding = embed_texts([text])[0]
+    except Exception as e:
+        print(f"[memory] query embed failed: {e}", flush=True)
+        traceback.print_exc()
+        return []
+
+    try:
+        result = supabase.rpc(
+            "match_channel_memory",
+            {
+                "p_channel_id": channel_id,
+                "p_query_embedding": query_embedding,
+                "p_match_count": top_k,
+                "p_min_similarity": min_similarity,
+            },
+        ).execute()
+    except Exception as e:
+        print(f"[memory] retrieve RPC failed: {e}", flush=True)
+        traceback.print_exc()
+        return []
+
+    chunks = result.data or []
+    if not chunks:
+        print(
+            f"[memory] retrieve channel={channel_id} hits=0 "
+            f"(min_sim={min_similarity})",
+            flush=True,
+        )
+        return []
+
+    ranked = rerank_with_recency(chunks)
+    trimmed = trim_to_token_budget(ranked, max_tokens)
+    print(
+        f"[memory] retrieve channel={channel_id} "
+        f"hits={len(chunks)} used={len(trimmed)}",
+        flush=True,
+    )
+    return trimmed
