@@ -341,8 +341,7 @@ export function TriggerSettings({
             ))}
             {triggers.length === 0 && (
               <p className="text-sm text-muted-foreground">
-                No triggers yet. Seed: daily digest (@divv) and keyword{" "}
-                <code className="text-xs">bug:</code> → @dev in #general.
+                No triggers yet. Create one to schedule digests or react to keywords.
               </p>
             )}
           </ul>

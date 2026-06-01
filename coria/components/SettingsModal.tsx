@@ -88,6 +88,7 @@ export function SettingsModal({
             section={section}
             agents={agents}
             channels={channels}
+            memberRole={memberRole}
           />
         </div>
       </div>

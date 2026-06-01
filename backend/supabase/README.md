@@ -40,12 +40,12 @@ New human messages auto-embed via `/api/memory/embed`. Agent replies embed in `i
 
 ## M3 — Streaming + polish
 
-- `@aria` uses SSE: `POST /api/invoke/stream` → backend `/invoke/stream`
+- `@mention` any agent uses SSE: `POST /api/invoke/stream` → backend `/invoke/stream`
 - Error toasts on send/invoke failures
 - `github_read` tool (public repos; optional `GITHUB_TOKEN` in backend `.env`)
 
 ```bash
-cd backend && supabase db push   # adds github_read to Aria allowed_tools
+cd backend && supabase db push   # tool policy updates
 ```
 
 ## V3 M1 — Trust layer (action blocks + tool broker)
@@ -53,7 +53,7 @@ cd backend && supabase db push   # adds github_read to Aria allowed_tools
 After `20260531000000_v3_m1_trust_layer.sql`:
 
 - Tables: `action_blocks`, `audit_log`, `tool_policies`, `workspace_settings`
-- `@dev` agent seeded with `github_post_comment` (approval required)
+- Demo workspace may seed agents with GitHub tools (approval required)
 - Tool broker gates: permission, rate, approval, audit
 
 **Requires `GITHUB_TOKEN`** in backend `.env` with `repo` scope to post issue comments.
@@ -61,7 +61,7 @@ After `20260531000000_v3_m1_trust_layer.sql`:
 Test flow:
 
 ```
-@dev comment on owner/repo issue 1: "Looks good from Coria"
+@your-agent comment on owner/repo issue 1: "Looks good from Coria"
 ```
 
 → approval card appears → Approve → comment posted on GitHub.
@@ -72,9 +72,8 @@ Decide endpoint: `POST /api/action-blocks/{id}/decide` (SSE resume stream).
 
 After `20260531200000_v3_m2_multi_agent.sql`:
 
-- **Divv** (`@divv`) — default workspace agent (V2 Aria row migrated)
-- **Aria** (`@aria`) — research agent with workspace memory
-- **Dev** (`@dev`) — engineering agent (unchanged from M1)
+- **Divv** (`@divv`) — default workspace agent for new workspaces
+- Create additional agents in **Settings → Agents** (custom slug, tools, prompt)
 - Agent CRUD: `GET/POST /agents`, `PATCH /agents/{id}`
 - Workspace settings: `GET/PATCH /workspace-settings` (kill switch, tool budget)
 - Settings UI: `/settings/agents`
@@ -84,7 +83,7 @@ Test flow:
 
 1. Open `/settings/agents` → create a custom agent → pause it → `@mention` should fail with clear message
 2. Toggle kill switch → chat shows banner; agent invokes blocked
-3. `@divv`, `@aria`, `@dev` autocomplete from DB
+3. Active agents autocomplete from DB when typing `@`
 
 ## V3 M3 — Memory & threads
 
@@ -92,7 +91,7 @@ After `20260531300000_v3_m3_memory_threads.sql`:
 
 - **Threads** — reply on any message; inline expand (desktop), full-screen (mobile)
 - **Thread invoke** — pass `thread_id` to `/invoke/stream`; agent gets thread transcript first
-- **Workspace memory** — dual-tier embed (`channel` + `workspace`); Aria has `use_workspace_memory`
+- **Workspace memory** — dual-tier embed (`channel` + `workspace`); enable per agent in settings
 - **`workspace_search` tool** — cross-channel RAG for agents with the tool
 - **Channel search** — header search bar uses `search_channel_messages` RPC
 - **Pin messages** — hover a message → Pin; up to 5 per channel; pinned bar at top of channel
@@ -102,8 +101,8 @@ Test flow:
 
 1. Post a decision in `#product`: "We ship v2 in May"
 2. Wait for embed (or backfill channel)
-3. In `#general`, reply in thread: `@aria what did we decide about the v2 ship date in #product?`
-4. Aria should cite `#product` from workspace memory
+3. In `#general`, reply in thread: `@divv what did we decide about the v2 ship date in #product?`
+4. Agent with workspace memory should cite `#product`
 
 ```bash
 cd backend && supabase db push
@@ -120,7 +119,7 @@ After `20260531400000_v3_m4_integrations_triggers.sql`:
 
 - **GitHub PAT** stored in Supabase Vault (`integrations` table + RPC helpers)
 - Settings UI: `/settings/integrations` — connect/disconnect GitHub PAT
-- **`github_create_pr`** tool on @dev (approval required)
+- **`github_create_pr`** tool (approval required; assign via agent allowed tools)
 - **`agent_triggers`** — cron + keyword types with 30s keyword debounce
 - Settings UI: `/settings/triggers` — CRUD + manual Run
 - Keyword hook: human channel messages call `/api/triggers/keyword` → backend invoke
@@ -130,14 +129,15 @@ After `20260531400000_v3_m4_integrations_triggers.sql`:
 | Trigger | Type | Agent | Channel | Config |
 |---------|------|-------|---------|--------|
 | `…007` | cron | @divv | #general | `0 9 * * *` daily digest |
-| `…008` | keyword | @dev | #general | `bug:` |
+
+Create keyword/cron triggers in **Settings → Triggers** and pick any agent.
 
 Test flow:
 
 1. `/settings/integrations` → paste GitHub PAT (`repo` scope) → Connect
-2. In `#general`, post `bug: login button broken` (no @mention) → @dev replies via keyword trigger
+2. In `#general`, post `bug: login button broken` with a keyword trigger configured → agent replies
 3. `/settings/triggers` → Run on cron digest trigger → @divv posts summary in #general
-4. `@dev create a draft PR on owner/repo from fix-branch` → approval card → Approve
+4. `@your-agent create a draft PR on owner/repo from fix-branch` → approval card → Approve
 
 **Cron scheduling (production):** enable `pg_cron` + `pg_net` on Supabase, then schedule an HTTP POST to the backend every minute:
 

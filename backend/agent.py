@@ -12,7 +12,7 @@ from domain import fetch_agent, fetch_channel, validate_invoke_scope
 from memory.embed import embed_message_row
 from memory.context import build_retrieval_context
 from memory.retrieve import retrieve_channel_memory
-from prompts import ARIA_SYSTEM_PROMPT
+from prompts import DEFAULT_AGENT_SYSTEM_PROMPT
 from serialization import serialize_messages
 from tool_runner import ApprovalPaused, run_tool_with_broker
 from tools import TOOL_DEFINITIONS, TOOL_REGISTRY, tools_for_agent
@@ -87,7 +87,7 @@ def _format_thread_messages(rows: list[dict]) -> str:
 
 
 def build_system_prompt(
-    base_prompt: str = ARIA_SYSTEM_PROMPT,
+    base_prompt: str = DEFAULT_AGENT_SYSTEM_PROMPT,
     thread_messages: list[dict] | None = None,
     memory_chunks: list[dict] | None = None,
     workspace_chunks: list[dict] | None = None,
@@ -278,8 +278,11 @@ async def _run_groq_tool(
 async def run_groq_loop(
     messages: list[dict],
     trace_id: str | None,
-    system_prompt: str = ARIA_SYSTEM_PROMPT,
+    system_prompt: str = DEFAULT_AGENT_SYSTEM_PROMPT,
     tool_defs: list[dict] | None = None,
+    *,
+    model: str | None = None,
+    api_key: str | None = None,
 ) -> tuple[str, list[dict]]:
     """Agentic loop for the Groq (default, free) provider, using OpenAI-style
     function calling.
@@ -291,11 +294,11 @@ async def run_groq_loop(
 
     Returns ``(reply_text, tool_steps)``; the caller appends the final reply step.
     """
-    model = os.getenv("LLM_MODEL")
+    model = model or os.getenv("LLM_MODEL")
     if not model:
         raise RuntimeError("LLM_MODEL must be set")
 
-    client = AsyncGroq()
+    client = AsyncGroq(api_key=api_key) if api_key else AsyncGroq()
     steps: list[dict] = []
     working = [
         {"role": "system", "content": system_prompt}
@@ -379,7 +382,11 @@ async def run_groq_loop(
 async def run_anthropic_loop(
     messages: list[dict],
     trace_id: str | None,
-    system_prompt: str = ARIA_SYSTEM_PROMPT,
+    system_prompt: str = DEFAULT_AGENT_SYSTEM_PROMPT,
+    tool_defs: list[dict] | None = None,
+    *,
+    model: str | None = None,
+    api_key: str | None = None,
 ) -> tuple[str, list[dict]]:
     """Agentic loop for the optional Anthropic provider (paid). Mirrors
     ``run_groq_loop`` using Anthropic's content-block tool protocol. Tool defs
@@ -387,14 +394,15 @@ async def run_anthropic_loop(
 
     Returns ``(reply_text, tool_steps)``; the caller appends the final reply step.
     """
-    model = os.getenv("LLM_MODEL")
+    model = model or os.getenv("LLM_MODEL")
     if not model:
         raise RuntimeError("LLM_MODEL must be set")
 
-    client = AsyncAnthropic()
+    client = AsyncAnthropic(api_key=api_key) if api_key else AsyncAnthropic()
     steps: list[dict] = []
     working = serialize_messages(messages)
-    anthropic_tools = _openai_tools_to_anthropic(TOOL_DEFINITIONS)
+    active_tools = tool_defs if tool_defs is not None else TOOL_DEFINITIONS
+    anthropic_tools = _openai_tools_to_anthropic(active_tools)
 
     for _ in range(MAX_AGENT_ITERATIONS):
         kwargs = {
@@ -463,11 +471,11 @@ async def run_anthropic_loop(
 
 def agent_system_prompt(agent: dict) -> str:
     prompt = (agent.get("system_prompt") or "").strip()
-    return prompt or ARIA_SYSTEM_PROMPT
+    return prompt or DEFAULT_AGENT_SYSTEM_PROMPT
 
 
 async def invoke_agent(user_message: str, channel_id: str, agent_id: str) -> None:
-    """Run Aria for one user message: create a reasoning trace, run the model
+    """Run the agent for one user message: create a reasoning trace, run the model
     through its provider loop, finalize the trace, then post the reply linked to
     that trace.
 
@@ -481,16 +489,16 @@ async def invoke_agent(user_message: str, channel_id: str, agent_id: str) -> Non
     """
     trace_id: str | None = None
     supabase = None
-    aria_name = "Aria"
-    aria_agent_id: str | None = None
+    agent_display_name = "Agent"
+    agent_db_id: str | None = None
     try:
         supabase = get_supabase()
 
         channel = fetch_channel(supabase, channel_id)
         agent = fetch_agent(supabase, agent_id)
         validate_invoke_scope(supabase, agent, channel)
-        aria_name = agent.get("name") or "Aria"
-        aria_agent_id = agent.get("id")
+        agent_display_name = agent.get("name") or "Agent"
+        agent_db_id = agent.get("id")
 
         # 1. Create the trace up front. Its own try/except: a DB hiccup here must
         #    not stop us from at least posting a (trace-less) reply.
@@ -521,18 +529,30 @@ async def invoke_agent(user_message: str, channel_id: str, agent_id: str) -> Non
         )
         messages = serialize_messages([{"role": "user", "content": user_message}])
         agent_tools = tools_for_agent(agent)
-        provider = os.getenv("LLM_PROVIDER", "groq")
+        from llm.config import resolve_llm_config
+
+        llm = resolve_llm_config(supabase, channel["workspace_id"])
         try:
-            if provider == "groq":
+            if llm.provider == "groq":
                 reply, tool_steps = await run_groq_loop(
-                    messages, trace_id, system_prompt, agent_tools
+                    messages,
+                    trace_id,
+                    system_prompt,
+                    agent_tools,
+                    model=llm.model,
+                    api_key=llm.api_key,
                 )
-            elif provider == "anthropic":
+            elif llm.provider == "anthropic":
                 reply, tool_steps = await run_anthropic_loop(
-                    messages, trace_id, system_prompt
+                    messages,
+                    trace_id,
+                    system_prompt,
+                    agent_tools,
+                    model=llm.model,
+                    api_key=llm.api_key,
                 )
             else:
-                raise RuntimeError(f"Unknown LLM_PROVIDER: {provider}")
+                raise RuntimeError(f"Unknown LLM provider: {llm.provider}")
             trace_status = "done"
         except Exception as e:
             print(f"[error] LLM call failed: {e}", flush=True)
@@ -559,8 +579,8 @@ async def invoke_agent(user_message: str, channel_id: str, agent_id: str) -> Non
             .insert(
                 {
                     "channel_id": channel_id,
-                    "sender_id": aria_agent_id,
-                    "sender_name": aria_name,
+                    "sender_id": agent_db_id,
+                    "sender_name": agent_display_name,
                     "sender_type": "agent",
                     "content": reply,
                     "reasoning_trace_id": trace_id,
@@ -606,8 +626,8 @@ async def invoke_agent(user_message: str, channel_id: str, agent_id: str) -> Non
                 supabase.table("messages").insert(
                     {
                         "channel_id": channel_id,
-                        "sender_id": aria_agent_id,
-                        "sender_name": aria_name,
+                        "sender_id": agent_db_id,
+                        "sender_name": agent_display_name,
                         "sender_type": "agent",
                         "content": "Sorry — I hit an error trying to respond.",
                         "reasoning_trace_id": trace_id,

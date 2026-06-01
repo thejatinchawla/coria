@@ -14,8 +14,19 @@ import type { ActionBlock, Agent, Message } from "@/types"
 function agentDescription(agent: Agent): string {
   if (agent.template_id === "engineering") return "Engineering agent"
   if (agent.template_id === "research") return "Research agent"
-  if (agent.mention_slug === "divv") return "Default teammate"
   return "AI teammate"
+}
+
+function messagePlaceholder(channelSlug: string, agents: Agent[]): string {
+  const active = agents.filter((a) => a.status === "active")
+  if (active.length === 0) {
+    return `Message #${channelSlug}`
+  }
+  const mentions = active
+    .slice(0, 4)
+    .map((a) => `@${a.mention_slug}`)
+    .join(", ")
+  return `Message #${channelSlug} — ${mentions}…`
 }
 
 function matchingAgents(text: string, agents: Agent[]) {
@@ -71,6 +82,10 @@ export function MessageInput({
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   const hintAgents = useMemo(() => matchingAgents(text, agents), [text, agents])
+  const placeholder = useMemo(
+    () => messagePlaceholder(channelSlug, agents),
+    [channelSlug, agents],
+  )
   const showAgentHint = hintAgents.length > 0
   const canSend = text.trim().length > 0 && !sending && !agentsGloballyPaused
 
@@ -289,7 +304,7 @@ export function MessageInput({
                 ? "All agents are paused"
                 : threadId
                   ? "Reply in thread…"
-                  : `Message #${channelSlug} — @divv, @aria, @dev…`
+                  : placeholder
             }
             disabled={sending || agentsGloballyPaused}
             aria-autocomplete="list"

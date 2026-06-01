@@ -46,7 +46,17 @@ export type WorkspaceSettings = {
   approval_ttl_hours?: number
   default_agent_id: string | null
   workspace_memory_enabled?: boolean
+  llm_provider?: "groq" | "anthropic" | null
+  llm_model?: string | null
   updated_at?: string
+}
+
+export type LlmIntegrationStatus = {
+  integration: Integration | null
+  llm_provider: "groq" | "anthropic" | null
+  llm_model: string | null
+  using_platform_default: boolean
+  key_configured: boolean
 }
 
 export type Member = {

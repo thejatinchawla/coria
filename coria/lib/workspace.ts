@@ -3,11 +3,8 @@ import type { Agent, Channel, Member, Workspace, WorkspaceSettings } from "@/typ
 
 export const DEMO_WORKSPACE_SLUG = "coria-demo"
 
-/** Fallback if default agent row not readable yet (Divv) */
+/** Fallback if default agent row not readable yet */
 export const DIVV_AGENT_ID_FALLBACK = "00000000-0000-4000-8000-000000000003"
-
-/** @deprecated use DIVV_AGENT_ID_FALLBACK */
-export const ARIA_AGENT_ID_FALLBACK = DIVV_AGENT_ID_FALLBACK
 
 export function slugifyWorkspaceName(name: string): string {
   return name
@@ -255,25 +252,6 @@ export async function fetchAgentBySlug(
   return data?.id ?? null
 }
 
-export async function fetchAriaAgentId(
-  supabase: SupabaseClient,
-  workspaceId: string,
-): Promise<string | null> {
-  const { data, error } = await supabase
-    .from("agents")
-    .select("id")
-    .eq("workspace_id", workspaceId)
-    .eq("mention_slug", "aria")
-    .maybeSingle()
-
-  if (error) {
-    console.error("[workspace] fetchAriaAgentId:", error.message)
-    return null
-  }
-
-  return data?.id ?? null
-}
-
 export async function fetchDefaultAgentId(
   supabase: SupabaseClient,
   workspaceId: string,
@@ -294,11 +272,12 @@ export async function fetchDefaultAgentId(
     .from("agents")
     .select("id")
     .eq("workspace_id", workspaceId)
-    .eq("mention_slug", "divv")
+    .order("created_at", { ascending: true })
+    .limit(1)
     .maybeSingle()
 
   if (error) {
-    console.error("[workspace] fetchDefaultAgentId divv:", error.message)
+    console.error("[workspace] fetchDefaultAgentId:", error.message)
     return null
   }
 
@@ -332,7 +311,7 @@ export async function fetchWorkspaceSettings(
   const { data, error } = await supabase
     .from("workspace_settings")
     .select(
-      "workspace_id,agents_globally_paused,monthly_tool_budget,tool_budget_used,approval_ttl_hours,default_agent_id,workspace_memory_enabled,updated_at",
+      "workspace_id,agents_globally_paused,monthly_tool_budget,tool_budget_used,approval_ttl_hours,default_agent_id,workspace_memory_enabled,llm_provider,llm_model,updated_at",
     )
     .eq("workspace_id", workspaceId)
     .maybeSingle()

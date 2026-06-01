@@ -58,7 +58,7 @@ export function LoginForm({ authError }: { authError?: boolean }) {
         <div className="space-y-1 text-center">
           <h1 className="text-2xl font-semibold tracking-tight">Coria</h1>
           <p className="text-sm text-muted-foreground">
-            Sign in or create a workspace
+            Team chat where AI agents act — with your team&apos;s permission.
           </p>
         </div>
 

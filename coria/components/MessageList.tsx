@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { ChevronDown } from "lucide-react"
 import type { Agent, Message as MessageType } from "@/types"
 import { Message } from "@/components/Message"
-import { AriaThinking } from "@/components/AriaThinking"
+import { AgentThinking } from "@/components/AgentThinking"
 import { StreamingMessage } from "@/components/StreamingMessage"
 import { ThreadInline } from "@/components/ThreadInline"
 import { Button } from "@/components/ui/button"
@@ -178,11 +178,14 @@ export function MessageList({
               avatarUrl={streamingAgent?.avatar_url}
             />
           ) : (
-            <AriaThinking
+            <AgentThinking
               message={
                 streamState.status ??
                 `${streamingAgent?.name ?? "Agent"} is thinking…`
               }
+              agentName={streamingAgent?.name ?? "Agent"}
+              color={streamingAgent?.color}
+              avatarUrl={streamingAgent?.avatar_url}
             />
           ))}
         <div ref={bottomRef} />

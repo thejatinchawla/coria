@@ -6,6 +6,7 @@ import type {
   AgentTrigger,
   Channel,
   Integration,
+  LlmIntegrationStatus,
   Member,
   MemberRole,
   PendingInvite,
@@ -16,6 +17,7 @@ import { ProfileSettings } from "@/components/ProfileSettings"
 import { AgentSettings } from "@/components/AgentSettings"
 import { MemberSettings } from "@/components/MemberSettings"
 import { IntegrationSettings } from "@/components/IntegrationSettings"
+import { LlmSettings } from "@/components/LlmSettings"
 import { TriggerSettings } from "@/components/TriggerSettings"
 import { AuditLogSettings } from "@/components/AuditLogSettings"
 import { WorkspaceSettings as WorkspaceDetailsSettings } from "@/components/WorkspaceSettings"
@@ -153,29 +155,60 @@ function MemberSettingsLoader() {
   )
 }
 
-function IntegrationSettingsLoader() {
+function IntegrationSettingsLoader({ canManageLlm }: { canManageLlm: boolean }) {
   const [integration, setIntegration] = useState<Integration | null | undefined>(
     undefined,
+  )
+  const [llmStatus, setLlmStatus] = useState<LlmIntegrationStatus | null | undefined>(
+    canManageLlm ? undefined : null,
   )
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     void (async () => {
-      const res = await fetch("/api/settings/integrations/github")
-      if (!res.ok) {
+      const requests: Promise<Response>[] = [
+        fetch("/api/settings/integrations/github"),
+      ]
+      if (canManageLlm) {
+        requests.push(fetch("/api/settings/integrations/llm"))
+      }
+
+      const [githubRes, llmRes] = await Promise.all(requests)
+
+      if (!githubRes.ok) {
         setError("Could not load integrations.")
         return
       }
-      const json = (await res.json()) as { integration: Integration | null }
-      setIntegration(json.integration)
+      const githubJson = (await githubRes.json()) as {
+        integration: Integration | null
+      }
+      setIntegration(githubJson.integration)
+
+      if (canManageLlm && llmRes) {
+        if (llmRes.status === 403) {
+          setLlmStatus(null)
+          return
+        }
+        if (!llmRes.ok) {
+          setError("Could not load LLM settings.")
+          return
+        }
+        setLlmStatus((await llmRes.json()) as LlmIntegrationStatus)
+      }
     })()
-  }, [])
+  }, [canManageLlm])
 
   if (error) return <ErrorPanel message={error} />
-  if (integration === undefined) {
+  if (integration === undefined || (canManageLlm && llmStatus === undefined)) {
     return <LoadingPanel />
   }
-  return <IntegrationSettings initialIntegration={integration} />
+
+  return (
+    <div className="space-y-8">
+      {canManageLlm && llmStatus && <LlmSettings initialStatus={llmStatus} />}
+      <IntegrationSettings initialIntegration={integration} />
+    </div>
+  )
 }
 
 function TriggerSettingsLoader({
@@ -285,11 +318,15 @@ export function SettingsPanel({
   section,
   agents,
   channels,
+  memberRole,
 }: {
   section: SettingsId
   agents: Agent[]
   channels: Channel[]
+  memberRole: MemberRole
 }) {
+  const canManageLlm = memberRole === "owner" || memberRole === "admin"
+
   switch (section) {
     case "workspace":
       return <WorkspaceSettingsLoader />
@@ -300,7 +337,7 @@ export function SettingsPanel({
     case "members":
       return <MemberSettingsLoader />
     case "integrations":
-      return <IntegrationSettingsLoader />
+      return <IntegrationSettingsLoader canManageLlm={canManageLlm} />
     case "triggers":
       return <TriggerSettingsLoader agents={agents} channels={channels} />
     case "audit":

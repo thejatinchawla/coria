@@ -20,6 +20,7 @@ from agent import (
 )
 from broker import ToolContext
 from domain import fetch_agent, fetch_channel, validate_invoke_scope
+from llm.config import resolve_llm_config
 from memory.context import build_cron_digest_context, build_retrieval_context
 from memory.embed import embed_message_row
 from serialization import serialize_messages
@@ -85,13 +86,15 @@ async def run_groq_loop_streaming(
     ctx: ToolContext | None = None,
     trace_id: str | None = None,
     allow_tools: bool = True,
+    model: str | None = None,
+    api_key: str | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     """Yield status/token events; final event is internal {'type':'_result', ...}."""
-    model = os.getenv("LLM_MODEL")
+    model = model or os.getenv("LLM_MODEL")
     if not model:
         raise RuntimeError("LLM_MODEL must be set")
 
-    client = AsyncGroq()
+    client = AsyncGroq(api_key=api_key) if api_key else AsyncGroq()
     loop_steps: list[dict] = list(steps or [])
     loop_working = (
         list(working)
@@ -222,6 +225,44 @@ async def run_groq_loop_streaming(
     }
 
 
+async def run_llm_loop_streaming(
+    llm,
+    messages: list[dict],
+    system_prompt: str,
+    tool_defs: list[dict],
+    **kwargs,
+) -> AsyncIterator[dict[str, Any]]:
+    """Dispatch streaming invoke to Groq or Anthropic using resolved workspace config."""
+    if llm.provider == "groq":
+        async for event in run_groq_loop_streaming(
+            messages,
+            system_prompt,
+            tool_defs,
+            model=llm.model,
+            api_key=llm.api_key,
+            **kwargs,
+        ):
+            yield event
+        return
+
+    if llm.provider == "anthropic":
+        yield {"type": "status", "message": "Generating reply…"}
+        reply, tool_steps = await run_anthropic_loop(
+            messages,
+            kwargs.get("trace_id"),
+            system_prompt,
+            tool_defs,
+            model=llm.model,
+            api_key=llm.api_key,
+        )
+        if reply:
+            yield {"type": "token", "content": reply}
+        yield {"type": "_result", "reply": reply, "steps": tool_steps}
+        return
+
+    raise RuntimeError(f"Unknown LLM provider: {llm.provider}")
+
+
 async def _persist_approval_pause(
     supabase,
     *,
@@ -297,7 +338,8 @@ async def invoke_agent_stream(
         )
 
         base_state = {
-            "provider": os.getenv("LLM_PROVIDER", "groq"),
+            "provider": None,
+            "llm_model": None,
             "system_prompt": "",
             "channel_id": channel_id,
             "agent_id": agent_id,
@@ -348,61 +390,53 @@ async def invoke_agent_stream(
         )
         base_state["system_prompt"] = system_prompt
 
+        llm = resolve_llm_config(supabase, channel["workspace_id"])
+        base_state["provider"] = llm.provider
+        base_state["llm_model"] = llm.model
+
         messages = serialize_messages(
             [{"role": "user", "content": user_message}]
         )
 
-        provider = os.getenv("LLM_PROVIDER", "groq")
         reply = ""
         tool_steps: list[dict] = []
         trace_status = "done"
 
         try:
-            if provider == "groq":
-                async for event in run_groq_loop_streaming(
-                    messages,
-                    system_prompt,
-                    tool_defs,
-                    supabase=supabase,
-                    ctx=ctx,
-                    trace_id=trace_id,
-                ):
-                    if event.get("type") == "_approval_paused":
-                        paused = event["paused"]
-                        action_block = await _persist_approval_pause(
-                            supabase,
-                            paused=paused,
-                            working=event["working"],
-                            steps=event["steps"],
-                            pending_tool=event["pending_tool"],
-                            trace_id=trace_id,
-                            state=base_state,
-                        )
-                        yield sse_event(
-                            {
-                                "type": "action_block",
-                                "action_block": action_block,
-                                "trace_id": trace_id,
-                            }
-                        )
-                        yield sse_event({"type": "awaiting_approval"})
-                        return
-                    if event.get("type") == "_result":
-                        reply = event.get("reply") or ""
-                        tool_steps = event.get("steps") or []
-                    else:
-                        yield sse_event(event)
-            elif provider == "anthropic":
-                yield sse_event(
-                    {"type": "status", "message": "Generating reply…"}
-                )
-                reply, tool_steps = await run_anthropic_loop(
-                    messages, trace_id, system_prompt
-                )
-                if reply:
-                    yield sse_event({"type": "token", "content": reply})
-            else:
-                raise RuntimeError(f"Unknown LLM_PROVIDER: {provider}")
+            async for event in run_llm_loop_streaming(
+                llm,
+                messages,
+                system_prompt,
+                tool_defs,
+                supabase=supabase,
+                ctx=ctx,
+                trace_id=trace_id,
+            ):
+                if event.get("type") == "_approval_paused":
+                    paused = event["paused"]
+                    action_block = await _persist_approval_pause(
+                        supabase,
+                        paused=paused,
+                        working=event["working"],
+                        steps=event["steps"],
+                        pending_tool=event["pending_tool"],
+                        trace_id=trace_id,
+                        state=base_state,
+                    )
+                    yield sse_event(
+                        {
+                            "type": "action_block",
+                            "action_block": action_block,
+                            "trace_id": trace_id,
+                        }
+                    )
+                    yield sse_event({"type": "awaiting_approval"})
+                    return
+                if event.get("type") == "_result":
+                    reply = event.get("reply") or ""
+                    tool_steps = event.get("steps") or []
+                else:
+                    yield sse_event(event)
         except Exception as e:
             print(f"[error] LLM stream failed: {e}", flush=True)
             traceback.print_exc()

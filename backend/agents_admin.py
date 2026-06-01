@@ -154,10 +154,28 @@ def patch_workspace_settings(supabase, workspace_id: str, payload: dict) -> dict
         "approval_ttl_hours",
         "default_agent_id",
         "workspace_memory_enabled",
+        "llm_provider",
+        "llm_model",
     }
     updates = {k: payload[k] for k in allowed if k in payload}
     if not updates:
         return fetch_workspace_settings(supabase, workspace_id)
+
+    if "llm_provider" in updates:
+        provider = updates["llm_provider"]
+        if provider is not None and provider not in ("groq", "anthropic"):
+            raise HTTPException(
+                status_code=400,
+                detail="llm_provider must be groq, anthropic, or null",
+            )
+        if provider == "":
+            updates["llm_provider"] = None
+    if "llm_model" in updates:
+        model = updates.get("llm_model")
+        if model is not None and not str(model).strip():
+            updates["llm_model"] = None
+        elif model is not None:
+            updates["llm_model"] = str(model).strip()
 
     if "monthly_tool_budget" in updates:
         updates["monthly_tool_budget"] = max(0, int(updates["monthly_tool_budget"]))

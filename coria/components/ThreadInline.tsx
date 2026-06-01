@@ -4,7 +4,7 @@ import { useEffect, useState } from "react"
 import type { Agent, Message } from "@/types"
 import { Message as MessageBubble } from "@/components/Message"
 import { MessageInput } from "@/components/MessageInput"
-import { AriaThinking } from "@/components/AriaThinking"
+import { AgentThinking } from "@/components/AgentThinking"
 import { StreamingMessage } from "@/components/StreamingMessage"
 
 export function ThreadInline({
@@ -85,11 +85,14 @@ export function ThreadInline({
               avatarUrl={streamingAgent?.avatar_url}
             />
           ) : (
-            <AriaThinking
+            <AgentThinking
               message={
                 streamState.status ??
                 `${streamingAgent?.name ?? "Agent"} is thinking…`
               }
+              agentName={streamingAgent?.name ?? "Agent"}
+              color={streamingAgent?.color}
+              avatarUrl={streamingAgent?.avatar_url}
             />
           ))}
       </div>

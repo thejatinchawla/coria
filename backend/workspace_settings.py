@@ -9,7 +9,7 @@ def fetch_workspace_settings(supabase, workspace_id: str) -> dict:
         .select(
             "workspace_id,agents_globally_paused,monthly_tool_budget,"
             "tool_budget_used,approval_ttl_hours,default_agent_id,"
-            "workspace_memory_enabled,updated_at"
+            "workspace_memory_enabled,llm_provider,llm_model,updated_at"
         )
         .eq("workspace_id", workspace_id)
         .limit(1)

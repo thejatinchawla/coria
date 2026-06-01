@@ -9,7 +9,8 @@ from broker import ToolContext
 from broker.audit import write_audit_log
 from db import get_supabase
 from domain import fetch_agent
-from invoke_stream import finalize_agent_message, run_groq_loop_streaming
+from invoke_stream import finalize_agent_message, run_llm_loop_streaming
+from llm.config import resolve_llm_config
 from serialization import deserialize_messages
 from streaming import sse_error, sse_event
 from tool_runner import ApprovalPaused, run_tool_with_broker
@@ -292,8 +293,11 @@ async def _continue_from_state(
     reply = ""
     trace_status = "done"
 
+    llm = resolve_llm_config(supabase, workspace_id)
+
     try:
-        async for event in run_groq_loop_streaming(
+        async for event in run_llm_loop_streaming(
+            llm,
             [],
             system_prompt,
             tool_defs,

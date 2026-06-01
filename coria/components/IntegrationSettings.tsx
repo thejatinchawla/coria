@@ -93,7 +93,7 @@ export function IntegrationSettings({
           <div className="min-w-0 flex-1">
             <h2 className="text-sm font-medium">GitHub</h2>
             <p className="text-xs text-muted-foreground">
-              Store a PAT in Supabase Vault for @dev write tools (
+              Store a PAT in Supabase Vault for GitHub write tools (
               <code className="text-xs">github_post_comment</code>,{" "}
               <code className="text-xs">github_create_pr</code>).
               Requires <code className="text-xs">repo</code> scope.

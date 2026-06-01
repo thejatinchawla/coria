@@ -25,7 +25,8 @@ export const metadata: Metadata = {
     default: "Coria",
     template: "%s · Coria",
   },
-  description: "Team chat in #general. Mention @aria to ask your AI teammate.",
+  description:
+    "Team chat where AI agents act — with your team's permission. Channels, multi-agent @mentions, and human-in-the-loop approvals.",
   applicationName: "Coria",
   robots: {
     index: false,

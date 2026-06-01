@@ -22,6 +22,8 @@ from integrations.admin import (
     get_github_integration,
     save_github_pat,
 )
+from llm.admin import disconnect_llm, get_llm_integration, save_llm_api_key
+from workspace_settings import fetch_workspace_settings
 from members_admin import (
     get_profile,
     invite_member,
@@ -139,6 +141,14 @@ class WorkspaceSettingsPatchRequest(BaseModel):
     monthly_tool_budget: int | None = None
     tool_budget_used: int | None = None
     default_agent_id: str | None = None
+    llm_provider: str | None = None
+    llm_model: str | None = None
+
+
+class LlmIntegrationRequest(BaseModel):
+    workspace_id: str
+    api_key: str
+    member_id: str
 
 
 class GitHubIntegrationRequest(BaseModel):
@@ -402,6 +412,48 @@ async def github_integration_delete(
     verify_invoke_secret(x_invoke_secret)
     supabase = get_supabase()
     disconnect_github(supabase, workspace_id)
+    return {"status": "disconnected"}
+
+
+@app.get("/integrations/llm")
+async def llm_integration_get(
+    workspace_id: str,
+    x_invoke_secret: str | None = Header(default=None),
+):
+    verify_invoke_secret(x_invoke_secret)
+    supabase = get_supabase()
+    settings = fetch_workspace_settings(supabase, workspace_id)
+    integration = get_llm_integration(supabase, workspace_id)
+    return {
+        "integration": integration,
+        "llm_provider": settings.get("llm_provider"),
+        "llm_model": settings.get("llm_model"),
+        "using_platform_default": not bool(settings.get("llm_provider")),
+        "key_configured": integration is not None,
+    }
+
+
+@app.post("/integrations/llm")
+async def llm_integration_save(
+    req: LlmIntegrationRequest,
+    x_invoke_secret: str | None = Header(default=None),
+):
+    verify_invoke_secret(x_invoke_secret)
+    supabase = get_supabase()
+    integration = save_llm_api_key(
+        supabase, req.workspace_id, req.api_key, req.member_id
+    )
+    return {"integration": integration}
+
+
+@app.delete("/integrations/llm")
+async def llm_integration_delete(
+    workspace_id: str,
+    x_invoke_secret: str | None = Header(default=None),
+):
+    verify_invoke_secret(x_invoke_secret)
+    supabase = get_supabase()
+    disconnect_llm(supabase, workspace_id)
     return {"status": "disconnected"}
 
 
