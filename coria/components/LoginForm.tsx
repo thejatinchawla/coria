@@ -30,7 +30,7 @@ export function LoginForm({ authError }: { authError?: boolean }) {
         email,
         password,
         options: {
-          emailRedirectTo: `${window.location.origin}/auth/callback`,
+          emailRedirectTo: `${window.location.origin}/auth/confirm?next=/onboarding`,
         },
       })
       setLoading(false)

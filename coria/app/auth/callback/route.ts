@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr"
 import { NextRequest, NextResponse } from "next/server"
+import { inviteJoinPath } from "@/lib/auth-confirm"
 
 const AUTH_OTP_TYPES = new Set([
   "invite",
@@ -17,18 +18,6 @@ function redirectOrigin(request: NextRequest, fallback: string) {
     return `${forwardedProto}://${forwardedHost}`
   }
   return fallback
-}
-
-/** PKCE invite links use `next=/auth/join` without `type=invite`. */
-function postAuthPath(next: string | null, type: string | null) {
-  const isInvite =
-    type === "invite" ||
-    next === "/auth/join" ||
-    (next?.startsWith("/auth/join") ?? false)
-
-  if (isInvite) return "/auth/join?from=invite"
-  if (next?.startsWith("/")) return next
-  return "/onboarding"
 }
 
 function createSupabaseForResponse(
@@ -56,14 +45,26 @@ function createSupabaseForResponse(
   )
 }
 
+function clientConfirmFallback(
+  baseOrigin: string,
+  request: NextRequest,
+): NextResponse {
+  const confirm = new URL(`${baseOrigin}/auth/confirm`)
+  for (const key of ["next", "code", "token_hash", "type"]) {
+    const value = request.nextUrl.searchParams.get(key)
+    if (value) confirm.searchParams.set(key, value)
+  }
+  return NextResponse.redirect(confirm.toString())
+}
+
 export async function GET(request: NextRequest) {
-  const { searchParams, origin } = new URL(request.url)
-  const code = searchParams.get("code")
-  const tokenHash = searchParams.get("token_hash")
-  const type = searchParams.get("type")
-  const next = searchParams.get("next")
+  const { origin } = new URL(request.url)
   const baseOrigin = redirectOrigin(request, origin)
-  const destination = postAuthPath(next, type)
+  const code = request.nextUrl.searchParams.get("code")
+  const tokenHash = request.nextUrl.searchParams.get("token_hash")
+  const type = request.nextUrl.searchParams.get("type")
+  const next = request.nextUrl.searchParams.get("next")
+  const destination = inviteJoinPath(next)
 
   if (code) {
     const response = NextResponse.redirect(`${baseOrigin}${destination}`)
@@ -75,6 +76,7 @@ export async function GET(request: NextRequest) {
     }
 
     console.error("[auth/callback] exchangeCodeForSession:", error.message)
+    return clientConfirmFallback(baseOrigin, request)
   }
 
   if (tokenHash && type && AUTH_OTP_TYPES.has(type)) {
@@ -87,7 +89,8 @@ export async function GET(request: NextRequest) {
         | "signup"
         | "magiclink"
         | "recovery"
-        | "email",
+        | "email"
+        | "email_change",
     })
 
     if (!error) {
@@ -95,7 +98,8 @@ export async function GET(request: NextRequest) {
     }
 
     console.error("[auth/callback] verifyOtp:", error.message)
+    return clientConfirmFallback(baseOrigin, request)
   }
 
-  return NextResponse.redirect(`${baseOrigin}/login?error=auth`)
+  return clientConfirmFallback(baseOrigin, request)
 }

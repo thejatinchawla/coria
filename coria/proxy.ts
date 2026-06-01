@@ -37,6 +37,22 @@ export async function proxy(request: NextRequest) {
     } = await supabase.auth.getUser()
 
     const { pathname } = request.nextUrl
+
+    const tokenHash = request.nextUrl.searchParams.get("token_hash")
+    const authCode = request.nextUrl.searchParams.get("code")
+    if (
+      (tokenHash || authCode) &&
+      pathname !== "/auth/confirm" &&
+      !pathname.startsWith("/auth/callback")
+    ) {
+      const url = request.nextUrl.clone()
+      url.pathname = "/auth/confirm"
+      if (!url.searchParams.has("next")) {
+        url.searchParams.set("next", "/auth/join")
+      }
+      return NextResponse.redirect(url)
+    }
+
     const isAuthRoute =
       pathname.startsWith("/login") ||
       pathname.startsWith("/auth") ||

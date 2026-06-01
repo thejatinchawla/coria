@@ -4,6 +4,11 @@ import { useEffect, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import type { User } from "@supabase/supabase-js"
 import { createClient } from "@/lib/supabase"
+import {
+  completeAuthFromUrl,
+  urlHasAuthCredentials,
+  waitForAuthUser,
+} from "@/lib/auth-confirm"
 import { displayName } from "@/lib/user"
 import { LoadingButton } from "@/components/ui/loading-button"
 import { Button } from "@/components/ui/button"
@@ -24,29 +29,29 @@ export function JoinWorkspace() {
   useEffect(() => {
     void (async () => {
       const supabase = createClient()
+      const search = window.location.search
+      const hash = window.location.hash
 
-      // Session may still be hydrating right after /auth/callback redirect.
-      for (let attempt = 0; attempt < 5; attempt++) {
-        const {
-          data: { user },
-        } = await supabase.auth.getUser()
+      if (urlHasAuthCredentials(search, hash)) {
+        const result = await completeAuthFromUrl(supabase, search, hash)
+        if (result.ok) {
+          window.history.replaceState({}, "", "/auth/join?from=invite")
+        }
+      }
 
-        if (user) {
-          setEmail(user.email ?? null)
+      const user = await waitForAuthUser(supabase)
 
-          if (!fromInvite) {
-            router.replace("/onboarding")
-            return
-          }
+      if (user) {
+        setEmail(user.email ?? null)
 
-          setNeedsPassword(true)
-          setLoading(false)
+        if (!fromInvite) {
+          router.replace("/onboarding")
           return
         }
 
-        if (attempt < 4) {
-          await new Promise((resolve) => setTimeout(resolve, 200))
-        }
+        setNeedsPassword(true)
+        setLoading(false)
+        return
       }
 
       router.replace("/login?error=auth")
