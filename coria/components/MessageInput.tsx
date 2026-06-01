@@ -101,6 +101,9 @@ export function MessageInput({
       sender_type: "human",
       content,
     }
+    if (memberId) {
+      insertRow.sender_id = memberId
+    }
     if (threadId) {
       insertRow.thread_id = threadId
       insertRow.parent_message_id = threadId

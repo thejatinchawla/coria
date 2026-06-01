@@ -30,6 +30,8 @@ export function ThreadView({
   onMessageSent,
   onPinToggle,
   pinLimitReached = false,
+  onDelete,
+  canDelete,
   highlightMessageId,
 }: {
   rootMessage: Message
@@ -59,6 +61,8 @@ export function ThreadView({
   onMessageSent?: (message: Message) => void
   onPinToggle?: (message: Message, pinned: boolean) => void
   pinLimitReached?: boolean
+  onDelete?: (message: Message) => void
+  canDelete?: (message: Message) => boolean
   highlightMessageId?: string | null
 }) {
   const threadMessages = [rootMessage, ...replies]
@@ -85,6 +89,8 @@ export function ThreadView({
         highlightMessageId={highlightMessageId}
         onPinToggle={onPinToggle}
         pinLimitReached={pinLimitReached}
+        onDelete={onDelete}
+        canDelete={canDelete}
       />
       <MessageInput
         channelId={channelId}

@@ -24,6 +24,8 @@ export function MessageList({
   onToggleThread,
   onPinToggle,
   pinLimitReached = false,
+  onDelete,
+  canDelete,
   activeStreamThreadId,
   threadProps,
 }: {
@@ -38,6 +40,8 @@ export function MessageList({
   onToggleThread?: (message: MessageType) => void
   onPinToggle?: (message: MessageType, pinned: boolean) => void
   pinLimitReached?: boolean
+  onDelete?: (message: MessageType) => void
+  canDelete?: (message: MessageType) => boolean
   activeStreamThreadId?: string | null
   threadProps?: {
     channelId: string
@@ -57,6 +61,8 @@ export function MessageList({
     onMessageSent?: (message: MessageType) => void
     onPinToggle?: (message: MessageType, pinned: boolean) => void
     pinLimitReached?: boolean
+    onDelete?: (message: MessageType) => void
+    canDelete?: (message: MessageType) => boolean
   }
 }) {
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -143,6 +149,11 @@ export function MessageList({
               }
               pinDisabled={
                 pinLimitReached && !message.is_pinned && onPinToggle !== undefined
+              }
+              onDelete={
+                onDelete && (!canDelete || canDelete(message))
+                  ? () => onDelete(message)
+                  : undefined
               }
             />
             {expandedThreadId === message.id &&

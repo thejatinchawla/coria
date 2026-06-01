@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase"
-import { fetchThreadReplies, fetchPinnedMessages, searchChannelMessages, setMessagePinned, MAX_PINNED_MESSAGES } from "@/lib/messages"
+import { fetchThreadReplies, fetchPinnedMessages, searchChannelMessages, setMessagePinned, canDeleteMessage, deleteMessage, MAX_PINNED_MESSAGES } from "@/lib/messages"
 import { streamActionBlockDecision } from "@/lib/stream-invoke"
 import { chatUrl } from "@/lib/settings-url"
 import type { SettingsId } from "@/lib/settings-links"
@@ -29,6 +29,7 @@ import { Sidebar } from "@/components/Sidebar"
 import { ThreadView } from "@/components/ThreadView"
 import { useIsMobile } from "@/components/ThreadInline"
 import { useToast } from "@/components/Toast"
+import { useConfirm } from "@/components/ConfirmDialog"
 
 type StreamState = {
   content: string
@@ -70,6 +71,7 @@ export function Chat({
 }) {
   const router = useRouter()
   const { toast } = useToast()
+  const { confirm } = useConfirm()
   const isMobile = useIsMobile()
   const [messages, setMessages] = useState<Message[]>(initialMessages)
   const [channelList, setChannelList] = useState(channels)
@@ -155,6 +157,47 @@ export function Chat({
       })
     }
   }, [])
+
+  const applyMessageRemoved = useCallback((message: Message) => {
+    if (message.thread_id) {
+      setThreadReplies((prev) => {
+        const list = prev[message.thread_id!]
+        if (!list) return prev
+        return {
+          ...prev,
+          [message.thread_id!]: list.filter((m) => m.id !== message.id),
+        }
+      })
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === message.thread_id
+            ? { ...m, reply_count: Math.max((m.reply_count ?? 0) - 1, 0) }
+            : m,
+        ),
+      )
+    } else {
+      setMessages((prev) => prev.filter((m) => m.id !== message.id))
+      if ((message.reply_count ?? 0) > 0) {
+        setThreadReplies((prev) => {
+          const next = { ...prev }
+          delete next[message.id]
+          return next
+        })
+      }
+      setExpandedThreadId((current) =>
+        current === message.id ? null : current,
+      )
+      setMobileThreadRoot((current) =>
+        current?.id === message.id ? null : current,
+      )
+    }
+    setPinnedMessages((prev) => prev.filter((m) => m.id !== message.id))
+  }, [])
+
+  const messageCanDelete = useCallback(
+    (message: Message) => canDeleteMessage(message, memberId, memberRole),
+    [memberId, memberRole],
+  )
 
   const scrollToMessage = useCallback((messageId: string) => {
     requestAnimationFrame(() => {
@@ -340,6 +383,20 @@ export function Chat({
       .on(
         "postgres_changes",
         {
+          event: "DELETE",
+          schema: "public",
+          table: "messages",
+          filter: `channel_id=eq.${channel.id}`,
+        },
+        (payload) => {
+          const removed = payload.old as Message
+          if (!removed?.id) return
+          applyMessageRemoved(removed)
+        },
+      )
+      .on(
+        "postgres_changes",
+        {
           event: "*",
           schema: "public",
           table: "action_blocks",
@@ -364,7 +421,7 @@ export function Chat({
       active = false
       supabase.removeChannel(realtime)
     }
-  }, [channel.id, loadPendingBlocks, loadPinnedMessages])
+  }, [channel.id, loadPendingBlocks, loadPinnedMessages, applyMessageRemoved])
 
   useEffect(() => {
     if (!streamState) return
@@ -477,6 +534,28 @@ export function Chat({
     }
   }
 
+  async function handleDeleteMessage(message: Message) {
+    const confirmed = await confirm({
+      title: "Delete message?",
+      description: "This cannot be undone.",
+      confirmLabel: "Delete",
+      variant: "destructive",
+    })
+    if (!confirmed) return
+
+    const supabase = createClient()
+    try {
+      await deleteMessage(supabase, message.id)
+      applyMessageRemoved(message)
+      toast("Message deleted", "success")
+    } catch (err) {
+      toast(
+        err instanceof Error ? err.message : "Could not delete message",
+        "error",
+      )
+    }
+  }
+
   const pinLimitReached = pinnedMessages.length >= MAX_PINNED_MESSAGES
 
   function makeStreamHandlers(threadId?: string | null) {
@@ -515,6 +594,8 @@ export function Chat({
     onActionBlock: handleActionBlock,
     onMessageSent: handleMessageSent,
     onPinToggle: handlePinToggle,
+    onDelete: handleDeleteMessage,
+    canDelete: messageCanDelete,
     pinLimitReached,
     ...makeStreamHandlers(expandedThreadId),
   }
@@ -641,6 +722,8 @@ export function Chat({
               onOpenThread={openThread}
               onToggleThread={toggleThread}
               onPinToggle={handlePinToggle}
+              onDelete={handleDeleteMessage}
+              canDelete={messageCanDelete}
               pinLimitReached={pinLimitReached}
               threadProps={threadProps}
             />
@@ -705,6 +788,8 @@ export function Chat({
           onActionBlock={handleActionBlock}
           onMessageSent={handleMessageSent}
           onPinToggle={handlePinToggle}
+          onDelete={handleDeleteMessage}
+          canDelete={messageCanDelete}
           pinLimitReached={pinLimitReached}
           highlightMessageId={highlightMessageId}
         />

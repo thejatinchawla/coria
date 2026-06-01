@@ -30,6 +30,8 @@ export function ThreadInline({
   onMessageSent,
   onPinToggle,
   pinLimitReached = false,
+  onDelete,
+  canDelete,
   highlightMessageId,
 }: {
   rootMessage: Message
@@ -55,6 +57,8 @@ export function ThreadInline({
   onMessageSent?: (message: Message) => void
   onPinToggle?: (message: Message, pinned: boolean) => void
   pinLimitReached?: boolean
+  onDelete?: (message: Message) => void
+  canDelete?: (message: Message) => boolean
 }) {
   return (
     <div className="ml-8 border-l-2 border-muted/80 pl-4 sm:ml-10">
@@ -74,6 +78,11 @@ export function ThreadInline({
               onPinToggle ? (pinned) => onPinToggle(message, pinned) : undefined
             }
             pinDisabled={pinLimitReached && !message.is_pinned}
+            onDelete={
+              onDelete && (!canDelete || canDelete(message))
+                ? () => onDelete(message)
+                : undefined
+            }
           />
         ))}
         {streamState &&
