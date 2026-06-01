@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { ToastProvider } from "@/components/Toast";
 import { ConfirmProvider } from "@/components/ConfirmDialog";
+import { AuthUrlHandler } from "@/components/AuthUrlHandler";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -46,7 +47,10 @@ export default function RootLayout({
     >
       <body className="min-h-dvh flex flex-col overflow-x-hidden">
         <ToastProvider>
-          <ConfirmProvider>{children}</ConfirmProvider>
+          <ConfirmProvider>
+            <AuthUrlHandler />
+            {children}
+          </ConfirmProvider>
         </ToastProvider>
       </body>
     </html>

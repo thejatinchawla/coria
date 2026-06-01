@@ -17,6 +17,15 @@ export function inviteJoinPath(next: string | null | undefined) {
   return "/auth/join?from=invite"
 }
 
+function resolveDestination(search: string, hash: string) {
+  const params = new URLSearchParams(search)
+  const hashParams = new URLSearchParams(hash.replace(/^#/, ""))
+  const type = params.get("type") ?? hashParams.get("type")
+  if (type === "invite") return "/auth/join?from=invite"
+  if (type === "signup") return "/onboarding"
+  return inviteJoinPath(params.get("next"))
+}
+
 export function urlHasAuthCredentials(search: string, hash: string) {
   const params = new URLSearchParams(search)
   const hashParams = new URLSearchParams(hash.replace(/^#/, ""))
@@ -35,10 +44,10 @@ export async function completeAuthFromUrl(
 ): Promise<{ ok: true; destination: string } | { ok: false; error: string }> {
   const params = new URLSearchParams(search)
   const hashParams = new URLSearchParams(hash.replace(/^#/, ""))
-  const destination = inviteJoinPath(params.get("next"))
+  const destination = resolveDestination(search, hash)
 
   const tokenHash = params.get("token_hash")
-  const type = params.get("type")
+  const type = params.get("type") ?? hashParams.get("type")
   if (tokenHash && type && OTP_TYPES.has(type)) {
     const { error } = await supabase.auth.verifyOtp({
       token_hash: tokenHash,
