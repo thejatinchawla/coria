@@ -4,7 +4,7 @@
 
 Coria is an AI-native team workspace: channels, multiple agents, human-in-the-loop approvals, and governance built in. Think team chat meets specialized AI teammates — not a single chatbot in a sidebar.
 
-> Building in public. Follow progress in [ROADMAP.md](./ROADMAP.md) and [docs/LINKEDIN_POST.md](./docs/LINKEDIN_POST.md).
+> Building in public. Follow progress in [ROADMAP.md](./ROADMAP.md) 
 
 ---
 
@@ -63,8 +63,6 @@ flowchart LR
 ```
 
 
-
-See [ARCHITECTURE-MVP.md](./ARCHITECTURE-MVP.md) for request flows and [PRD-V3.md](./PRD-V3.md) for product scope.
 
 ---
 
@@ -174,14 +172,6 @@ Add a hero screenshot for README and social posts:
 # Capture after local dev is running (see docs/SCREENSHOTS.md)
 docs/screenshots/hero-chat.png
 ```
-
----
-
-## Roadmap
-
-Shipped vs planned: [ROADMAP.md](./ROADMAP.md)
-
-**Not in V3:** SSO, billing, mobile apps, agent marketplace.
 
 ---
 
