@@ -1,19 +1,22 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { useRouter } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase"
 import { completeAuthFromUrl, urlHasAuthCredentials } from "@/lib/auth-confirm"
 
 /**
- * Supabase email invites often redirect with tokens in the URL hash
- * (e.g. /login#access_token=…&type=invite). Hashes never reach the server.
+ * Handles Supabase auth tokens in the URL hash/query on pages other than
+ * /auth/join (that page handles its own invite flow).
  */
 export function AuthUrlHandler() {
   const router = useRouter()
+  const pathname = usePathname()
   const [active, setActive] = useState(false)
 
   useEffect(() => {
+    if (pathname === "/auth/join") return
+
     const search = window.location.search
     const hash = window.location.hash
     if (!urlHasAuthCredentials(search, hash)) return
@@ -26,14 +29,19 @@ export function AuthUrlHandler() {
 
       if (result.ok) {
         window.history.replaceState(null, "", result.destination)
-        router.replace(result.destination)
-        return
+        const onDestination =
+          `${window.location.pathname}${window.location.search}` ===
+          result.destination
+        if (!onDestination) {
+          router.replace(result.destination)
+        }
+      } else {
+        console.error("[AuthUrlHandler]", result.error)
       }
 
-      console.error("[AuthUrlHandler]", result.error)
       setActive(false)
     })()
-  }, [router])
+  }, [pathname, router])
 
   if (!active) return null
 

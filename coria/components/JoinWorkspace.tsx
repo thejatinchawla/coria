@@ -20,43 +20,65 @@ export function JoinWorkspace() {
 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [needsPassword, setNeedsPassword] = useState(fromInvite)
+  const [needsPassword, setNeedsPassword] = useState(false)
   const [password, setPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
   const [saving, setSaving] = useState(false)
   const [email, setEmail] = useState<string | null>(null)
 
   useEffect(() => {
+    const supabase = createClient()
+    let cancelled = false
+
+    function showInvitePassword(user: User) {
+      if (cancelled) return
+      setEmail(user.email ?? null)
+      if (!fromInvite) {
+        router.replace("/onboarding")
+        return
+      }
+      setNeedsPassword(true)
+      setLoading(false)
+    }
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user && fromInvite) {
+        showInvitePassword(session.user)
+      }
+    })
+
     void (async () => {
-      const supabase = createClient()
       const search = window.location.search
       const hash = window.location.hash
 
       if (urlHasAuthCredentials(search, hash)) {
         const result = await completeAuthFromUrl(supabase, search, hash)
+        if (cancelled) return
+
         if (result.ok) {
-          window.history.replaceState({}, "", "/auth/join?from=invite")
+          window.history.replaceState(null, "", "/auth/join?from=invite")
+        } else {
+          console.error("[join] completeAuthFromUrl:", result.error)
         }
       }
 
-      const user = await waitForAuthUser(supabase)
+      const user = await waitForAuthUser(supabase, 15, 300)
+      if (cancelled) return
 
       if (user) {
-        setEmail(user.email ?? null)
-
-        if (!fromInvite) {
-          router.replace("/onboarding")
-          return
-        }
-
-        setNeedsPassword(true)
-        setLoading(false)
+        showInvitePassword(user)
         return
       }
 
       router.replace("/login?error=auth")
     })()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
+    return () => {
+      cancelled = true
+      subscription.unsubscribe()
+    }
   }, [fromInvite, router])
 
   async function finishJoin(
@@ -137,10 +159,10 @@ export function JoinWorkspace() {
     await finishJoin(supabase, user)
   }
 
-  if (loading && !needsPassword) {
+  if (loading) {
     return (
       <div className="flex min-h-dvh items-center justify-center text-sm text-muted-foreground">
-        Joining workspace…
+        Completing sign-in…
       </div>
     )
   }

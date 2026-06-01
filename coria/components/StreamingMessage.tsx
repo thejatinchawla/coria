@@ -16,7 +16,7 @@ export function StreamingMessage({
   return (
     <div className="flex gap-2 sm:gap-3">
       <AgentAvatar name={senderName} color={color} avatarUrl={avatarUrl} />
-      <div className={cn("flex flex-col gap-1", incomingBubbleMaxWidth)}>
+      <div className="flex w-fit max-w-[min(85%,32rem)] flex-col gap-1 sm:max-w-[70%]">
         <span className="text-xs text-muted-foreground">{senderName}</span>
         <div className="w-fit rounded-2xl rounded-tl-sm bg-muted px-3 py-2 sm:px-4">
           <p className="text-sm whitespace-pre-wrap break-words">
