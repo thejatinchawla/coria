@@ -15,7 +15,7 @@ export function AuthUrlHandler() {
   const [active, setActive] = useState(false)
 
   useEffect(() => {
-    if (pathname === "/auth/join") return
+    if (pathname === "/auth/join" || pathname === "/auth/confirm") return
 
     const search = window.location.search
     const hash = window.location.hash

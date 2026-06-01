@@ -1,4 +1,4 @@
-import type { SupabaseClient } from "@supabase/supabase-js"
+import type { SupabaseClient, User } from "@supabase/supabase-js"
 
 const OTP_TYPES = new Set([
   "invite",
@@ -99,4 +99,38 @@ export async function waitForAuthUser(
     }
   }
   return null
+}
+
+let inviteSessionWork: Promise<User | null> | null = null
+
+/** Idempotent invite session setup (safe under React Strict Mode double-mount). */
+export function ensureInviteSession(
+  supabase: SupabaseClient,
+): Promise<User | null> {
+  if (typeof window === "undefined") {
+    return Promise.resolve(null)
+  }
+
+  inviteSessionWork ??= (async () => {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession()
+    if (session?.user) return session.user
+
+    const search = window.location.search
+    const hash = window.location.hash
+
+    if (urlHasAuthCredentials(search, hash)) {
+      const result = await completeAuthFromUrl(supabase, search, hash)
+      if (result.ok) {
+        window.history.replaceState(null, "", "/auth/join?from=invite")
+      } else {
+        console.error("[ensureInviteSession]", result.error)
+      }
+    }
+
+    return waitForAuthUser(supabase, 25, 400)
+  })()
+
+  return inviteSessionWork
 }

@@ -1,8 +1,9 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase"
+import { urlHasAuthCredentials } from "@/lib/auth-confirm"
 import { LoadingButton } from "@/components/ui/loading-button"
 
 export function LoginForm({ authError }: { authError?: boolean }) {
@@ -17,6 +18,20 @@ export function LoginForm({ authError }: { authError?: boolean }) {
       ? "Could not complete sign-in. Open the invite link from your email again, or sign in below."
       : null,
   )
+
+  useEffect(() => {
+    const search = window.location.search
+    const hash = window.location.hash
+    if (urlHasAuthCredentials(search, hash)) return
+
+    void createClient()
+      .auth.getSession()
+      .then(({ data: { session } }) => {
+        if (session?.user) {
+          router.replace("/?channel=general")
+        }
+      })
+  }, [router])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()

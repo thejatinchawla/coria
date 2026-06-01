@@ -25,6 +25,7 @@ function AuthConfirmInner() {
       if (urlHasAuthCredentials(search, hash)) {
         const result = await completeAuthFromUrl(supabase, search, hash)
         if (result.ok) {
+          window.history.replaceState(null, "", result.destination)
           router.replace(result.destination)
           return
         }

@@ -4,11 +4,7 @@ import { useEffect, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import type { User } from "@supabase/supabase-js"
 import { createClient } from "@/lib/supabase"
-import {
-  completeAuthFromUrl,
-  urlHasAuthCredentials,
-  waitForAuthUser,
-} from "@/lib/auth-confirm"
+import { ensureInviteSession } from "@/lib/auth-confirm"
 import { displayName } from "@/lib/user"
 import { LoadingButton } from "@/components/ui/loading-button"
 import { Button } from "@/components/ui/button"
@@ -27,11 +23,13 @@ export function JoinWorkspace() {
   const [email, setEmail] = useState<string | null>(null)
 
   useEffect(() => {
+    let ignore = false
+    const settledRef = { current: false }
     const supabase = createClient()
-    let cancelled = false
 
     function showInvitePassword(user: User) {
-      if (cancelled) return
+      if (ignore || settledRef.current) return
+      settledRef.current = true
       setEmail(user.email ?? null)
       if (!fromInvite) {
         router.replace("/onboarding")
@@ -39,6 +37,7 @@ export function JoinWorkspace() {
       }
       setNeedsPassword(true)
       setLoading(false)
+      setError(null)
     }
 
     const {
@@ -49,34 +48,21 @@ export function JoinWorkspace() {
       }
     })
 
-    void (async () => {
-      const search = window.location.search
-      const hash = window.location.hash
-
-      if (urlHasAuthCredentials(search, hash)) {
-        const result = await completeAuthFromUrl(supabase, search, hash)
-        if (cancelled) return
-
-        if (result.ok) {
-          window.history.replaceState(null, "", "/auth/join?from=invite")
-        } else {
-          console.error("[join] completeAuthFromUrl:", result.error)
-        }
-      }
-
-      const user = await waitForAuthUser(supabase, 15, 300)
-      if (cancelled) return
-
+    void ensureInviteSession(supabase).then((user) => {
+      if (ignore) return
       if (user) {
         showInvitePassword(user)
         return
       }
-
-      router.replace("/login?error=auth")
-    })()
+      if (settledRef.current) return
+      setLoading(false)
+      setError(
+        "Could not verify your invite session. Refresh the page or open the invite link from your email again.",
+      )
+    })
 
     return () => {
-      cancelled = true
+      ignore = true
       subscription.unsubscribe()
     }
   }, [fromInvite, router])
@@ -152,7 +138,8 @@ export function JoinWorkspace() {
       data: { user },
     } = await supabase.auth.getUser()
     if (!user) {
-      router.replace("/login?error=auth")
+      setError("Session expired. Refresh the page and try again.")
+      setSaving(false)
       return
     }
 
@@ -228,9 +215,9 @@ export function JoinWorkspace() {
   if (error) {
     return (
       <div className="flex min-h-dvh flex-col items-center justify-center gap-3 px-4 text-center">
-        <p className="text-sm text-destructive">{error}</p>
-        <Button variant="outline" onClick={() => router.push("/login")}>
-          Back to sign in
+        <p className="max-w-sm text-sm text-destructive">{error}</p>
+        <Button variant="outline" onClick={() => window.location.reload()}>
+          Refresh page
         </Button>
       </div>
     )

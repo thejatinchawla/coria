@@ -64,16 +64,9 @@ export async function proxy(request: NextRequest) {
       return NextResponse.redirect(url)
     }
 
-    if (user && pathname === "/login") {
-      const url = request.nextUrl.clone()
-      url.pathname = "/"
-      url.searchParams.set("channel", "general")
-      const redirect = NextResponse.redirect(url)
-      supabaseResponse.cookies.getAll().forEach((cookie) => {
-        redirect.cookies.set(cookie.name, cookie.value)
-      })
-      return redirect
-    }
+    // Do not auto-redirect authenticated users away from /login here.
+    // Invite links often land on /login#access_token=…; client AuthUrlHandler
+    // must finish setSession and route to /auth/join before any server redirect.
 
     return supabaseResponse
   } catch (error) {
