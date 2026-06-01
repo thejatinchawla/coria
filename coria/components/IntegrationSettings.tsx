@@ -1,19 +1,15 @@
 "use client"
 
 import { useCallback, useState } from "react"
-import Link from "next/link"
-import { ArrowLeft, Pencil, Unplug } from "lucide-react"
+import { Pencil, Unplug } from "lucide-react"
 import { SiGithub } from "react-icons/si"
 import type { Integration } from "@/types"
-import { SettingsNav } from "@/components/SettingsNav"
 import { Button } from "@/components/ui/button"
 import { useToast } from "@/components/Toast"
 
 export function IntegrationSettings({
-  workspaceName,
   initialIntegration,
 }: {
-  workspaceName: string
   initialIntegration: Integration | null
 }) {
   const { toast } = useToast()
@@ -89,24 +85,7 @@ export function IntegrationSettings({
   }
 
   return (
-    <div className="mx-auto flex max-w-2xl flex-col gap-8 px-4 py-8">
-      <div className="flex items-center gap-3">
-        <Link
-          href="/?channel=general"
-          className="rounded-md p-2 text-muted-foreground hover:bg-muted"
-          aria-label="Back to chat"
-        >
-          <ArrowLeft className="size-5" />
-        </Link>
-        <div>
-          <h1 className="text-lg font-semibold">Integrations</h1>
-          <p className="text-sm text-muted-foreground">{workspaceName}</p>
-        </div>
-      </div>
-
-      <SettingsNav />
-
-      <section className="space-y-4 rounded-lg border p-4">
+    <section className="space-y-4 rounded-lg border p-4">
         <div className="flex items-start gap-3">
           <div className="rounded-md bg-muted p-2">
             <SiGithub className="size-5" aria-hidden />
@@ -198,6 +177,5 @@ export function IntegrationSettings({
           </>
         )}
       </section>
-    </div>
   )
 }

@@ -6,10 +6,13 @@ import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase"
 import { fetchThreadReplies, fetchPinnedMessages, searchChannelMessages, setMessagePinned, MAX_PINNED_MESSAGES } from "@/lib/messages"
 import { streamActionBlockDecision } from "@/lib/stream-invoke"
+import { chatUrl } from "@/lib/settings-url"
+import type { SettingsId } from "@/lib/settings-links"
 import type {
   ActionBlock,
   Agent,
   Channel,
+  MemberRole,
   Message,
   MessageSearchHit,
   Workspace,
@@ -21,6 +24,7 @@ import { MessageList } from "@/components/MessageList"
 import { PinsView } from "@/components/PinsView"
 import type { ChannelTab } from "@/components/ChannelHeader"
 import { MessageInput } from "@/components/MessageInput"
+import { SettingsModal } from "@/components/SettingsModal"
 import { Sidebar } from "@/components/Sidebar"
 import { ThreadView } from "@/components/ThreadView"
 import { useIsMobile } from "@/components/ThreadInline"
@@ -35,6 +39,8 @@ type StreamState = {
 
 export function Chat({
   workspace,
+  workspaces,
+  memberRole,
   channel,
   channels,
   agentId,
@@ -45,8 +51,11 @@ export function Chat({
   initialMessages,
   userEmail,
   userDisplayName,
+  settingsSection,
 }: {
   workspace: Workspace
+  workspaces: Workspace[]
+  memberRole: MemberRole
   channel: Channel
   channels: Channel[]
   agentId: string
@@ -57,6 +66,7 @@ export function Chat({
   initialMessages: Message[]
   userEmail: string
   userDisplayName: string
+  settingsSection: SettingsId | null
 }) {
   const router = useRouter()
   const { toast } = useToast()
@@ -395,6 +405,11 @@ export function Chat({
     setSidebarOpen(false)
   }
 
+  function handleChannelDeleted(channelId: string, _fallback: Channel) {
+    setChannelList((prev) => prev.filter((c) => c.id !== channelId))
+    setSidebarOpen(false)
+  }
+
   function handleActionBlock(block: ActionBlock) {
     setPendingBlocks((prev) => {
       if (prev.some((b) => b.id === block.id)) return prev
@@ -549,20 +564,41 @@ export function Chat({
   return (
     <div className="flex h-dvh overflow-hidden bg-background text-foreground">
       <Sidebar
-        workspaceName={workspace.name}
+        workspaces={workspaces}
         channels={channelList}
         activeChannelSlug={channel.slug}
         displayName={userDisplayName}
         email={userEmail}
         workspaceId={workspace.id}
+        memberRole={memberRole}
         open={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
         onChannelCreated={handleChannelCreated}
+        onChannelDeleted={handleChannelDeleted}
+        settingsSection={settingsSection}
       />
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="relative flex min-w-0 flex-1 flex-col">
+        {settingsSection && (
+            <SettingsModal
+              workspaceName={workspace.name}
+              channelSlug={channel.slug}
+              section={
+                settingsSection === "workspace" &&
+                memberRole !== "owner" &&
+                memberRole !== "admin"
+                  ? "profile"
+                  : settingsSection
+              }
+              memberRole={memberRole}
+              agents={agents}
+              channels={channelList}
+            />
+        )}
         <ChannelHeader
           channelName={channel.name}
+          channelSlug={channel.slug}
           workspaceName={workspace.name}
+          settingsSection={settingsSection}
           activeTab={channelTab}
           pinnedCount={pinnedMessages.length}
           onTabChange={setChannelTab}
@@ -580,15 +616,20 @@ export function Chat({
         {agentsGloballyPaused && (
           <div className="shrink-0 border-b bg-destructive/10 px-4 py-2 text-center text-sm text-destructive">
             All agents are paused for this workspace. Resume in{" "}
-            <Link href="/settings/agents" className="underline underline-offset-2">
+            <Link
+              href={chatUrl(channel.slug, "agents")}
+              scroll={false}
+              className="underline underline-offset-2"
+            >
               settings
             </Link>
             .
           </div>
         )}
-        {channelTab === "messages" ? (
-          <>
-            <MessageList
+        <div className="flex min-h-0 flex-1 flex-col">
+          {channelTab === "messages" ? (
+            <>
+              <MessageList
               messages={topLevelMessages}
               streamState={streamState}
               streamingAgent={streamState?.agent}
@@ -621,20 +662,21 @@ export function Chat({
               onActionBlock={handleActionBlock}
               onMessageSent={handleMessageSent}
             />
-          </>
-        ) : (
-          <PinsView
-            pins={pinnedMessages}
-            agentsById={agentsById}
-            onSelect={(message) => {
-              setChannelTab("messages")
-              void navigateToMessage(message)
-            }}
-            onUnpin={(message) => {
-              void handlePinToggle(message, false)
-            }}
-          />
-        )}
+            </>
+          ) : (
+            <PinsView
+              pins={pinnedMessages}
+              agentsById={agentsById}
+              onSelect={(message) => {
+                setChannelTab("messages")
+                void navigateToMessage(message)
+              }}
+              onUnpin={(message) => {
+                void handlePinToggle(message, false)
+              }}
+            />
+          )}
+        </div>
       </div>
 
       {mobileThreadRoot && (

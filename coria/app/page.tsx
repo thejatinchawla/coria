@@ -4,21 +4,24 @@ import { createClient } from "@/lib/supabase-server"
 import { displayName } from "@/lib/user"
 import {
   DIVV_AGENT_ID_FALLBACK,
-  ensureDemoMember,
   fetchAgents,
   fetchChannelBySlug,
   fetchChannels,
   fetchDefaultAgentId,
+  fetchMember,
   fetchMemberId,
+  fetchUserWorkspaces,
   fetchWorkspace,
   fetchWorkspaceSettings,
 } from "@/lib/workspace"
+import { getActiveWorkspaceIdFromCookie } from "@/lib/workspace-cookie"
 import { Chat } from "@/components/Chat"
 import { SetupError } from "@/components/SetupError"
+import { isSettingsId } from "@/lib/settings-links"
 import type { Message } from "@/types"
 
 type PageProps = {
-  searchParams: Promise<{ channel?: string }>
+  searchParams: Promise<{ channel?: string; settings?: string }>
 }
 
 export async function generateMetadata({
@@ -31,9 +34,12 @@ export async function generateMetadata({
 export default async function Home({ searchParams }: PageProps) {
   const params = await searchParams
   const channelSlug = params.channel?.trim() || "general"
+  const settingsSection = isSettingsId(params.settings) ? params.settings : null
 
   if (!params.channel) {
-    redirect(`/?channel=${channelSlug}`)
+    const url = new URLSearchParams({ channel: channelSlug })
+    if (settingsSection) url.set("settings", settingsSection)
+    redirect(`/?${url.toString()}`)
   }
 
   const supabase = await createClient()
@@ -44,27 +50,24 @@ export default async function Home({ searchParams }: PageProps) {
   if (!user) redirect("/login")
 
   const userDisplayName = displayName(user)
+  const workspaces = await fetchUserWorkspaces(supabase, user.id)
+  const activeWorkspaceId = await getActiveWorkspaceIdFromCookie()
 
-  const workspace = await fetchWorkspace(supabase)
-  if (!workspace) {
-    return (
-      <SetupError
-        title="Workspace not set up"
-        message="Could not load the Coria Demo workspace. Apply the V2 Supabase migration to your project."
-      />
-    )
+  if (workspaces.length === 0) {
+    redirect("/onboarding")
   }
 
-  const memberResult = await ensureDemoMember(
-    supabase,
-    user.id,
-    userDisplayName,
-  )
-  if (!memberResult.ok) {
+  const workspace = await fetchWorkspace(supabase, user.id, activeWorkspaceId)
+  if (!workspace) {
+    redirect("/onboarding")
+  }
+
+  const member = await fetchMember(supabase, workspace.id, user.id)
+  if (!member) {
     return (
       <SetupError
-        title="Could not join workspace"
-        message={memberResult.error}
+        title="Could not access workspace"
+        message="You are not a member of this workspace."
       />
     )
   }
@@ -76,12 +79,14 @@ export default async function Home({ searchParams }: PageProps) {
   )
   if (!channel) {
     if (channelSlug !== "general") {
-      redirect("/?channel=general")
+      const url = new URLSearchParams({ channel: "general" })
+      if (settingsSection) url.set("settings", settingsSection)
+      redirect(`/?${url.toString()}`)
     }
     return (
       <SetupError
         title="Channel not found"
-        message='The #general channel is missing. Re-run the V2 migration seed.'
+        message='The #general channel is missing for this workspace.'
       />
     )
   }
@@ -105,6 +110,8 @@ export default async function Home({ searchParams }: PageProps) {
   return (
     <Chat
       workspace={workspace}
+      workspaces={workspaces}
+      memberRole={member.role}
       channel={channel}
       channels={channels}
       agentId={agentId ?? DIVV_AGENT_ID_FALLBACK}
@@ -115,6 +122,7 @@ export default async function Home({ searchParams }: PageProps) {
       initialMessages={(messages ?? []) as Message[]}
       userEmail={user.email ?? ""}
       userDisplayName={userDisplayName}
+      settingsSection={settingsSection}
     />
   )
 }

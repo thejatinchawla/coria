@@ -1,27 +1,25 @@
 "use client"
 
 import { useCallback, useState } from "react"
-import Link from "next/link"
-import { ArrowLeft, Trash2, UserPlus } from "lucide-react"
+import { Trash2, UserPlus } from "lucide-react"
 import type { Member, MemberRole, PendingInvite } from "@/types"
-import { SettingsNav } from "@/components/SettingsNav"
 import { Button } from "@/components/ui/button"
 import { useToast } from "@/components/Toast"
+import { useConfirm } from "@/components/ConfirmDialog"
 
 export function MemberSettings({
-  workspaceName,
   initialMembers,
   initialInvites,
   currentMemberId,
   currentRole,
 }: {
-  workspaceName: string
   initialMembers: Member[]
   initialInvites: PendingInvite[]
   currentMemberId: string
   currentRole: MemberRole
 }) {
   const { toast } = useToast()
+  const { confirm } = useConfirm()
   const [members, setMembers] = useState(initialMembers)
   const [invites, setInvites] = useState(initialInvites)
   const [email, setEmail] = useState("")
@@ -86,7 +84,13 @@ export function MemberSettings({
   }
 
   async function removeMember(memberId: string) {
-    if (!confirm("Remove this member from the workspace?")) return
+    const confirmed = await confirm({
+      title: "Remove member?",
+      description: "They will lose access to this workspace immediately.",
+      confirmLabel: "Remove member",
+      variant: "destructive",
+    })
+    if (!confirmed) return
     setSaving(true)
     try {
       const res = await fetch(`/api/settings/members/${memberId}`, {
@@ -104,9 +108,13 @@ export function MemberSettings({
   }
 
   async function revokeInvite(inviteId: string) {
-    if (!confirm("Revoke this invite? The email link will no longer grant workspace access.")) {
-      return
-    }
+    const confirmed = await confirm({
+      title: "Revoke invite?",
+      description: "The email link will no longer grant workspace access.",
+      confirmLabel: "Revoke invite",
+      variant: "destructive",
+    })
+    if (!confirmed) return
     setSaving(true)
     try {
       const res = await fetch(`/api/settings/members/invites/${inviteId}`, {
@@ -124,23 +132,7 @@ export function MemberSettings({
   }
 
   return (
-    <div className="mx-auto flex max-w-2xl flex-col gap-8 px-4 py-8">
-      <div className="flex items-center gap-3">
-        <Link
-          href="/?channel=general"
-          className="rounded-md p-2 text-muted-foreground hover:bg-muted"
-          aria-label="Back to chat"
-        >
-          <ArrowLeft className="size-5" />
-        </Link>
-        <div>
-          <h1 className="text-lg font-semibold">Members</h1>
-          <p className="text-sm text-muted-foreground">{workspaceName}</p>
-        </div>
-      </div>
-
-      <SettingsNav />
-
+    <div className="space-y-8">
       <form onSubmit={(e) => void sendInvite(e)} className="space-y-3 rounded-lg border p-4">
         <h2 className="text-sm font-medium">Invite by email</h2>
         <p className="text-xs text-muted-foreground">

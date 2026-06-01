@@ -3,7 +3,7 @@
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase"
-import { Button } from "@/components/ui/button"
+import { LoadingButton } from "@/components/ui/loading-button"
 
 export function LoginForm({ authError }: { authError?: boolean }) {
   const router = useRouter()
@@ -50,7 +50,6 @@ export function LoginForm({ authError }: { authError?: boolean }) {
       return
     }
     router.push("/")
-    router.refresh()
   }
 
   return (
@@ -59,7 +58,7 @@ export function LoginForm({ authError }: { authError?: boolean }) {
         <div className="space-y-1 text-center">
           <h1 className="text-2xl font-semibold tracking-tight">Coria</h1>
           <p className="text-sm text-muted-foreground">
-            Sign in to chat in #general
+            Sign in or create a workspace
           </p>
         </div>
 
@@ -101,13 +100,9 @@ export function LoginForm({ authError }: { authError?: boolean }) {
             <p className="text-sm text-muted-foreground">{message}</p>
           )}
 
-          <Button type="submit" className="w-full" disabled={loading}>
-            {loading
-              ? "Please wait…"
-              : mode === "signup"
-                ? "Create account"
-                : "Sign in"}
-          </Button>
+          <LoadingButton type="submit" className="w-full" loading={loading}>
+            {mode === "signup" ? "Create account" : "Sign in"}
+          </LoadingButton>
         </form>
 
         <p className="text-center text-sm text-muted-foreground">

@@ -13,6 +13,8 @@ import {
 } from "lucide-react"
 import type { MessageSearchHit } from "@/types"
 import { cn } from "@/lib/utils"
+import { chatUrl } from "@/lib/settings-url"
+import type { SettingsId } from "@/lib/settings-links"
 
 export type ChannelTab = "messages" | "pins"
 
@@ -66,6 +68,7 @@ function ChannelTabButton({
 
 export function ChannelHeader({
   channelName,
+  channelSlug,
   workspaceName,
   channelDescription,
   activeTab = "messages",
@@ -77,8 +80,10 @@ export function ChannelHeader({
   onSearchChange,
   onSearchSelect,
   onMenuOpen,
+  settingsSection = null,
 }: {
   channelName: string
+  channelSlug: string
   workspaceName: string
   channelDescription?: string
   activeTab?: ChannelTab
@@ -90,6 +95,7 @@ export function ChannelHeader({
   onSearchChange?: (query: string) => void
   onSearchSelect?: (hit: MessageSearchHit) => void
   onMenuOpen: () => void
+  settingsSection?: SettingsId | null
 }) {
   const [searchOpen, setSearchOpen] = useState(false)
 
@@ -144,8 +150,14 @@ export function ChannelHeader({
             <Search className="size-5" />
           </button>
           <Link
-            href="/settings/agents"
-            className="rounded-md p-2 text-muted-foreground hover:bg-muted"
+            href={chatUrl(channelSlug, "agents")}
+            scroll={false}
+            className={cn(
+              "rounded-md p-2 hover:bg-muted",
+              settingsSection === "agents"
+                ? "bg-muted text-foreground"
+                : "text-muted-foreground",
+            )}
             aria-label="Agent settings"
           >
             <Settings className="size-5" />

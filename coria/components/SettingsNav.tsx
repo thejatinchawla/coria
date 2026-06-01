@@ -1,30 +1,37 @@
 "use client"
 
 import Link from "next/link"
-import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
+import { SETTINGS_LINKS, type SettingsId } from "@/lib/settings-links"
+import { chatUrl } from "@/lib/settings-url"
+import type { MemberRole } from "@/types"
 
-const LINKS = [
-  { href: "/settings/profile", label: "Profile" },
-  { href: "/settings/agents", label: "Agents" },
-  { href: "/settings/members", label: "Members" },
-  { href: "/settings/integrations", label: "Integrations" },
-  { href: "/settings/triggers", label: "Triggers" },
-  { href: "/settings/audit", label: "Audit" },
-] as const
+function isLinkVisible(id: SettingsId, memberRole: MemberRole): boolean {
+  if (id === "workspace") return memberRole === "owner" || memberRole === "admin"
+  return true
+}
 
-export function SettingsNav() {
-  const pathname = usePathname()
+export function SettingsNav({
+  channelSlug,
+  activeSection,
+  memberRole,
+}: {
+  channelSlug: string
+  activeSection: SettingsId
+  memberRole: MemberRole
+}) {
+  const links = SETTINGS_LINKS.filter((link) => isLinkVisible(link.id, memberRole))
 
   return (
     <nav className="flex flex-wrap gap-1 rounded-lg border p-1">
-      {LINKS.map((link) => (
+      {links.map((link) => (
         <Link
-          key={link.href}
-          href={link.href}
+          key={link.id}
+          href={chatUrl(channelSlug, link.id)}
+          scroll={false}
           className={cn(
             "rounded-md px-3 py-1.5 text-sm transition-colors",
-            pathname === link.href
+            activeSection === link.id
               ? "bg-primary text-primary-foreground"
               : "text-muted-foreground hover:bg-muted hover:text-foreground",
           )}

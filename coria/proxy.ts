@@ -1,13 +1,13 @@
 import { createServerClient } from "@supabase/ssr"
 import { NextResponse, type NextRequest } from "next/server"
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
   if (!supabaseUrl || !supabaseAnonKey) {
     console.error(
-      "Middleware: NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY missing",
+      "Proxy: NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY missing",
     )
     return NextResponse.next({ request })
   }
@@ -38,7 +38,9 @@ export async function middleware(request: NextRequest) {
 
     const { pathname } = request.nextUrl
     const isAuthRoute =
-      pathname.startsWith("/login") || pathname.startsWith("/auth")
+      pathname.startsWith("/login") ||
+      pathname.startsWith("/auth") ||
+      pathname.startsWith("/onboarding")
 
     if (!user && !isAuthRoute) {
       const url = request.nextUrl.clone()
@@ -59,7 +61,7 @@ export async function middleware(request: NextRequest) {
 
     return supabaseResponse
   } catch (error) {
-    console.error("Middleware error:", error)
+    console.error("Proxy error:", error)
     return NextResponse.next({ request })
   }
 }

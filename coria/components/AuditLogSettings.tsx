@@ -1,10 +1,8 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
-import Link from "next/link"
-import { ArrowLeft, ChevronLeft, ChevronRight, Download } from "lucide-react"
+import { ChevronLeft, ChevronRight, Download } from "lucide-react"
 import type { Agent, AuditLogEntry } from "@/types"
-import { SettingsNav } from "@/components/SettingsNav"
 import { Button } from "@/components/ui/button"
 import { useToast } from "@/components/Toast"
 import { cn } from "@/lib/utils"
@@ -36,13 +34,7 @@ function outcomeClass(outcome: string) {
   return "bg-muted text-muted-foreground"
 }
 
-export function AuditLogSettings({
-  workspaceName,
-  agents,
-}: {
-  workspaceName: string
-  agents: Agent[]
-}) {
+export function AuditLogSettings({ agents }: { agents: Agent[] }) {
   const { toast } = useToast()
   const [items, setItems] = useState<AuditLogEntry[]>([])
   const [total, setTotal] = useState(0)
@@ -141,23 +133,7 @@ export function AuditLogSettings({
   }
 
   return (
-    <div className="mx-auto flex max-w-3xl flex-col gap-8 px-4 py-8">
-      <div className="flex items-center gap-3">
-        <Link
-          href="/?channel=general"
-          className="rounded-md p-2 text-muted-foreground hover:bg-muted"
-          aria-label="Back to chat"
-        >
-          <ArrowLeft className="size-5" />
-        </Link>
-        <div>
-          <h1 className="text-lg font-semibold">Audit log</h1>
-          <p className="text-sm text-muted-foreground">{workspaceName}</p>
-        </div>
-      </div>
-
-      <SettingsNav />
-
+    <div className="space-y-8">
       <section className="space-y-3 rounded-lg border p-4">
         <div className="flex flex-wrap items-end justify-between gap-2">
           <h2 className="text-sm font-medium">Filters</h2>

@@ -1,12 +1,11 @@
 "use client"
 
 import { useCallback, useState } from "react"
-import Link from "next/link"
-import { ArrowLeft, Play, Plus, Trash2 } from "lucide-react"
+import { Play, Plus, Trash2 } from "lucide-react"
 import type { Agent, AgentTrigger, Channel } from "@/types"
-import { SettingsNav } from "@/components/SettingsNav"
 import { Button } from "@/components/ui/button"
 import { useToast } from "@/components/Toast"
+import { useConfirm } from "@/components/ConfirmDialog"
 import { cn } from "@/lib/utils"
 
 type TriggerForm = {
@@ -48,6 +47,12 @@ function configFromForm(form: TriggerForm): Record<string, unknown> {
   return config
 }
 
+const CRON_PRESETS = [
+  { label: "Daily 9:00 UTC", expr: "0 9 * * *" },
+  { label: "Weekdays 9:00 UTC", expr: "0 9 * * 1-5" },
+  { label: "Every 6 hours", expr: "0 */6 * * *" },
+] as const
+
 function formFromTrigger(
   trigger: AgentTrigger,
   agents: Agent[],
@@ -69,17 +74,16 @@ function formFromTrigger(
 }
 
 export function TriggerSettings({
-  workspaceName,
   initialTriggers,
   agents,
   channels,
 }: {
-  workspaceName: string
   initialTriggers: AgentTrigger[]
   agents: Agent[]
   channels: Channel[]
 }) {
   const { toast } = useToast()
+  const { confirm } = useConfirm()
   const [triggers, setTriggers] = useState<AgentTrigger[]>(initialTriggers)
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -187,7 +191,13 @@ export function TriggerSettings({
   }
 
   async function deleteTrigger(id: string) {
-    if (!confirm("Delete this trigger?")) return
+    const confirmed = await confirm({
+      title: "Delete trigger?",
+      description: "This scheduled or keyword trigger will stop running.",
+      confirmLabel: "Delete trigger",
+      variant: "destructive",
+    })
+    if (!confirmed) return
     setSaving(true)
     try {
       const res = await fetch(`/api/settings/triggers/${id}`, {
@@ -233,23 +243,7 @@ export function TriggerSettings({
   const formVisible = showCreate || editingId
 
   return (
-    <div className="mx-auto flex max-w-2xl flex-col gap-8 px-4 py-8">
-      <div className="flex items-center gap-3">
-        <Link
-          href="/?channel=general"
-          className="rounded-md p-2 text-muted-foreground hover:bg-muted"
-          aria-label="Back to chat"
-        >
-          <ArrowLeft className="size-5" />
-        </Link>
-        <div>
-          <h1 className="text-lg font-semibold">Triggers</h1>
-          <p className="text-sm text-muted-foreground">{workspaceName}</p>
-        </div>
-      </div>
-
-      <SettingsNav />
-
+    <div className="space-y-8">
       <section className="space-y-3">
         <div className="flex items-center justify-between">
           <div>
@@ -438,6 +432,7 @@ export function TriggerSettings({
                 <input
                   required
                   placeholder="0 9 * * *"
+                  aria-describedby="cron-help"
                   className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm font-mono"
                   value={form.cron}
                   onChange={(e) =>
@@ -445,6 +440,37 @@ export function TriggerSettings({
                   }
                 />
               </label>
+              <div id="cron-help" className="space-y-2 text-xs text-muted-foreground">
+                <p>
+                  Five fields, space-separated, all times in UTC:{" "}
+                  <span className="font-mono text-foreground/80">
+                    minute hour day-of-month month day-of-week
+                  </span>
+                  . Use <span className="font-mono">*</span> for &ldquo;every&rdquo;.
+                  Day-of-week is 0–6 (Sunday = 0).
+                </p>
+                <p>
+                  Example:{" "}
+                  <span className="font-mono text-foreground/80">0 9 * * *</span>{" "}
+                  runs every day at 9:00 AM UTC.
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {CRON_PRESETS.map((preset) => (
+                    <Button
+                      key={preset.expr}
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-7 text-xs"
+                      onClick={() =>
+                        setForm((f) => ({ ...f, cron: preset.expr }))
+                      }
+                    >
+                      {preset.label}
+                    </Button>
+                  ))}
+                </div>
+              </div>
               <label className="block space-y-1 text-sm">
                 <span className="text-muted-foreground">Prompt</span>
                 <textarea

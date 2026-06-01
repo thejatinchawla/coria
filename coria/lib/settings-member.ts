@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase-server"
 import { fetchMember, fetchWorkspace } from "@/lib/workspace"
+import { getActiveWorkspaceIdFromCookie } from "@/lib/workspace-cookie"
 
 export async function requireWorkspaceMember() {
   const supabase = await createClient()
@@ -9,7 +10,11 @@ export async function requireWorkspaceMember() {
   } = await supabase.auth.getUser()
   if (!user) return { error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) }
 
-  const workspace = await fetchWorkspace(supabase)
+  const workspace = await fetchWorkspace(
+    supabase,
+    user.id,
+    await getActiveWorkspaceIdFromCookie(),
+  )
   if (!workspace) {
     return {
       error: NextResponse.json({ error: "Workspace not found" }, { status: 404 }),
@@ -21,7 +26,7 @@ export async function requireWorkspaceMember() {
     return { error: NextResponse.json({ error: "Not a workspace member" }, { status: 403 }) }
   }
 
-  return { workspace, member, userId: user.id }
+  return { workspace, member, userId: user.id, supabase }
 }
 
 export async function requireWorkspaceAdmin() {

@@ -1,12 +1,16 @@
 "use client"
 
-import { useEffect, useRef } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
+import { ChevronDown } from "lucide-react"
 import type { Agent, Message as MessageType } from "@/types"
 import { Message } from "@/components/Message"
 import { AriaThinking } from "@/components/AriaThinking"
 import { StreamingMessage } from "@/components/StreamingMessage"
 import { ThreadInline } from "@/components/ThreadInline"
+import { Button } from "@/components/ui/button"
 import type { ActionBlock } from "@/types"
+
+const SCROLL_THRESHOLD_PX = 80
 
 export function MessageList({
   messages,
@@ -55,11 +59,33 @@ export function MessageList({
     pinLimitReached?: boolean
   }
 }) {
+  const scrollRef = useRef<HTMLDivElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const isFirstRender = useRef(true)
   const prevLastMessageId = useRef<string | undefined>(
     messages.at(-1)?.id,
   )
+  const [atBottom, setAtBottom] = useState(true)
+
+  const checkAtBottom = useCallback(() => {
+    const el = scrollRef.current
+    if (!el) return
+    const distance = el.scrollHeight - el.scrollTop - el.clientHeight
+    setAtBottom(distance <= SCROLL_THRESHOLD_PX)
+  }, [])
+
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
+    bottomRef.current?.scrollIntoView({ behavior })
+    setAtBottom(true)
+  }, [])
+
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    el.addEventListener("scroll", checkAtBottom, { passive: true })
+    checkAtBottom()
+    return () => el.removeEventListener("scroll", checkAtBottom)
+  }, [checkAtBottom, messages.length])
 
   useEffect(() => {
     const lastId = messages.at(-1)?.id
@@ -75,6 +101,7 @@ export function MessageList({
       bottomRef.current?.scrollIntoView({
         behavior: isFirstRender.current ? "instant" : "smooth",
       })
+      setAtBottom(true)
     }
     isFirstRender.current = false
   }, [messages, streamState, activeStreamThreadId])
@@ -88,8 +115,9 @@ export function MessageList({
   }
 
   return (
-    <div className="flex-1 overflow-y-auto">
-      <div className="mx-auto flex max-w-3xl flex-col gap-4 px-3 py-4 sm:gap-6 sm:px-6 sm:py-6">
+    <div className="relative min-h-0 flex-1">
+      <div ref={scrollRef} className="h-full overflow-y-auto">
+        <div className="mx-auto flex max-w-3xl flex-col gap-4 px-3 py-4 sm:gap-6 sm:px-6 sm:py-6">
         {messages.map((message) => (
           <div key={message.id} className="flex flex-col gap-0">
             <Message
@@ -158,7 +186,20 @@ export function MessageList({
             />
           ))}
         <div ref={bottomRef} />
+        </div>
       </div>
+      {!atBottom && (
+        <Button
+          type="button"
+          size="icon"
+          variant="secondary"
+          aria-label="Scroll to latest messages"
+          onClick={() => scrollToBottom()}
+          className="absolute bottom-4 right-4 z-10 size-10 rounded-full shadow-md"
+        >
+          <ChevronDown className="size-5" />
+        </Button>
+      )}
     </div>
   )
 }

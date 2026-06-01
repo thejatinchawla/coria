@@ -9,34 +9,113 @@ export const DIVV_AGENT_ID_FALLBACK = "00000000-0000-4000-8000-000000000003"
 /** @deprecated use DIVV_AGENT_ID_FALLBACK */
 export const ARIA_AGENT_ID_FALLBACK = DIVV_AGENT_ID_FALLBACK
 
-export async function fetchWorkspace(
+export function slugifyWorkspaceName(name: string): string {
+  return name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 48)
+}
+
+export async function fetchUserWorkspaces(
   supabase: SupabaseClient,
-): Promise<Workspace | null> {
+  userId: string,
+): Promise<Workspace[]> {
+  const { data: memberships, error: memberError } = await supabase
+    .from("members")
+    .select("workspace_id")
+    .eq("user_id", userId)
+
+  if (memberError) {
+    console.error("[workspace] fetchUserWorkspaces members:", memberError.message)
+    return []
+  }
+
+  const workspaceIds = (memberships ?? []).map((m) => m.workspace_id)
+  if (workspaceIds.length === 0) return []
+
   const { data, error } = await supabase
     .from("workspaces")
     .select("id,name,slug,created_at")
-    .eq("slug", DEMO_WORKSPACE_SLUG)
-    .maybeSingle()
+    .in("id", workspaceIds)
+    .order("created_at", { ascending: true })
 
   if (error) {
-    console.error("[workspace] fetchWorkspace:", error.message)
-    return null
+    console.error("[workspace] fetchUserWorkspaces:", error.message)
+    return []
   }
 
-  return (data as Workspace | null) ?? null
+  return (data as Workspace[] | null) ?? []
 }
 
+export async function fetchWorkspace(
+  supabase: SupabaseClient,
+  userId?: string,
+  activeWorkspaceId?: string | null,
+): Promise<Workspace | null> {
+  if (!userId) {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+    if (!user) return null
+    userId = user.id
+  }
+
+  const workspaces = await fetchUserWorkspaces(supabase, userId)
+  if (workspaces.length === 0) return null
+
+  if (activeWorkspaceId) {
+    const active = workspaces.find((w) => w.id === activeWorkspaceId)
+    if (active) return active
+  }
+
+  return workspaces[0] ?? null
+}
+
+export async function createWorkspace(
+  supabase: SupabaseClient,
+  name: string,
+  displayName: string,
+): Promise<{ ok: true; workspaceId: string } | { ok: false; error: string }> {
+  const { data, error } = await supabase.rpc("create_workspace", {
+    p_name: name.trim(),
+    p_display_name: displayName.trim(),
+  })
+
+  if (error) {
+    return { ok: false, error: error.message }
+  }
+
+  return { ok: true, workspaceId: data as string }
+}
+
+/** @deprecated Prefer createWorkspace for new users; kept for demo bootstrap */
 export async function ensureDemoMember(
   supabase: SupabaseClient,
   userId: string,
   displayName: string,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  const workspace = await fetchWorkspace(supabase)
-  if (!workspace) {
+  const { data: existingMembership } = await supabase
+    .from("members")
+    .select("id")
+    .eq("user_id", userId)
+    .limit(1)
+    .maybeSingle()
+
+  if (existingMembership) return { ok: true }
+
+  const { data: demo } = await supabase
+    .from("workspaces")
+    .select("id")
+    .eq("slug", DEMO_WORKSPACE_SLUG)
+    .maybeSingle()
+
+  if (!demo) {
     return {
       ok: false,
       error:
-        "Demo workspace not found. Run backend/supabase migration (supabase db push).",
+        "No workspace found. Create a workspace to get started.",
     }
   }
 
@@ -45,13 +124,13 @@ export async function ensureDemoMember(
       p_display_name: displayName,
     })
   } catch {
-    /* no pending invite — continue */
+    /* no pending invite */
   }
 
   const { data: existing, error: selectError } = await supabase
     .from("members")
     .select("id")
-    .eq("workspace_id", workspace.id)
+    .eq("workspace_id", demo.id)
     .eq("user_id", userId)
     .maybeSingle()
 
@@ -62,7 +141,7 @@ export async function ensureDemoMember(
   if (existing) return { ok: true }
 
   const { error: insertError } = await supabase.from("members").insert({
-    workspace_id: workspace.id,
+    workspace_id: demo.id,
     user_id: userId,
     display_name: displayName,
     role: "member",
@@ -291,4 +370,80 @@ export function slugifyChannelName(name: string): string {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 80)
+}
+
+export async function updateWorkspaceName(
+  supabase: SupabaseClient,
+  workspaceId: string,
+  name: string,
+): Promise<{ ok: true; workspace: Workspace } | { ok: false; error: string }> {
+  const trimmed = name.trim()
+  if (!trimmed) {
+    return { ok: false, error: "Workspace name is required." }
+  }
+
+  const { data, error } = await supabase
+    .from("workspaces")
+    .update({ name: trimmed })
+    .eq("id", workspaceId)
+    .select("id,name,slug,created_at")
+    .single()
+
+  if (error) {
+    return { ok: false, error: error.message }
+  }
+
+  return { ok: true, workspace: data as Workspace }
+}
+
+export async function deleteWorkspace(
+  supabase: SupabaseClient,
+  workspaceId: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const { error } = await supabase.from("workspaces").delete().eq("id", workspaceId)
+
+  if (error) {
+    return { ok: false, error: error.message }
+  }
+
+  return { ok: true }
+}
+
+export async function deleteChannel(
+  supabase: SupabaseClient,
+  workspaceId: string,
+  channelId: string,
+): Promise<
+  | { ok: true; fallbackChannel: Channel }
+  | { ok: false; error: string; status?: number }
+> {
+  const channels = await fetchChannels(supabase, workspaceId)
+  if (channels.length <= 1) {
+    return {
+      ok: false,
+      error: "Cannot delete the last channel in a workspace.",
+      status: 400,
+    }
+  }
+
+  const target = channels.find((c) => c.id === channelId)
+  if (!target) {
+    return { ok: false, error: "Channel not found.", status: 404 }
+  }
+
+  const { error } = await supabase
+    .from("channels")
+    .delete()
+    .eq("id", channelId)
+    .eq("workspace_id", workspaceId)
+
+  if (error) {
+    return { ok: false, error: error.message }
+  }
+
+  const remaining = channels.filter((c) => c.id !== channelId)
+  const fallback =
+    remaining.find((c) => c.slug === "general") ?? remaining[0]!
+
+  return { ok: true, fallbackChannel: fallback }
 }

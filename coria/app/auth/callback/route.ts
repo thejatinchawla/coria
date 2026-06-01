@@ -27,7 +27,7 @@ export async function GET(request: Request) {
         ? `/auth/join?from=invite`
         : next.startsWith("/")
           ? next
-          : "/auth/join"
+          : "/onboarding"
       return NextResponse.redirect(`${origin}${dest}`)
     }
   }
@@ -44,7 +44,7 @@ export async function GET(request: Request) {
     })
     if (!error) {
       const dest =
-        type === "invite" ? `/auth/join?from=invite` : "/auth/join"
+        type === "invite" ? `/auth/join?from=invite` : "/onboarding"
       return NextResponse.redirect(`${origin}${dest}`)
     }
   }

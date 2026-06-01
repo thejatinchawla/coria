@@ -1,11 +1,9 @@
 "use client"
 
 import { useCallback, useState } from "react"
-import Link from "next/link"
-import { ArrowLeft, Pause, Play, Plus } from "lucide-react"
+import { Pause, Play, Plus } from "lucide-react"
 import type { Agent, WorkspaceSettings } from "@/types"
 import { AgentAvatar } from "@/components/AgentAvatar"
-import { SettingsNav } from "@/components/SettingsNav"
 import { Button } from "@/components/ui/button"
 import { useToast } from "@/components/Toast"
 import { cn } from "@/lib/utils"
@@ -35,11 +33,9 @@ const EMPTY_FORM: AgentForm = {
 }
 
 export function AgentSettings({
-  workspaceName,
   initialAgents,
   initialSettings,
 }: {
-  workspaceName: string
   initialAgents: Agent[]
   initialSettings: WorkspaceSettings | null
 }) {
@@ -162,23 +158,7 @@ export function AgentSettings({
   }
 
   return (
-    <div className="mx-auto flex max-w-2xl flex-col gap-8 px-4 py-8">
-      <div className="flex items-center gap-3">
-        <Link
-          href="/?channel=general"
-          className="rounded-md p-2 text-muted-foreground hover:bg-muted"
-          aria-label="Back to chat"
-        >
-          <ArrowLeft className="size-5" />
-        </Link>
-        <div>
-          <h1 className="text-lg font-semibold">Agent settings</h1>
-          <p className="text-sm text-muted-foreground">{workspaceName}</p>
-        </div>
-      </div>
-
-      <SettingsNav />
-
+    <div className="space-y-8">
       {settings && (
         <section className="space-y-4 rounded-lg border p-4">
           <h2 className="text-sm font-medium">Workspace controls</h2>

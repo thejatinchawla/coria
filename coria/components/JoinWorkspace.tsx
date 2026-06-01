@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation"
 import type { User } from "@supabase/supabase-js"
 import { createClient } from "@/lib/supabase"
 import { displayName } from "@/lib/user"
+import { LoadingButton } from "@/components/ui/loading-button"
 import { Button } from "@/components/ui/button"
 
 export function JoinWorkspace() {
@@ -34,14 +35,13 @@ export function JoinWorkspace() {
 
       setEmail(user.email ?? null)
 
-      // Invited users accept the link before choosing a password.
-      if (fromInvite) {
-        setNeedsPassword(true)
-        setLoading(false)
+      if (!fromInvite) {
+        router.replace("/onboarding")
         return
       }
 
-      await finishJoin(supabase, user)
+      setNeedsPassword(true)
+      setLoading(false)
     })()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fromInvite, router])
@@ -52,16 +52,17 @@ export function JoinWorkspace() {
   ) {
     const name = displayName(user)
 
-    const { error: inviteError } = await supabase.rpc("accept_workspace_invite", {
-      p_display_name: name,
-    })
+    const { data: workspaceId, error: inviteError } = await supabase.rpc(
+      "accept_workspace_invite",
+      { p_display_name: name },
+    )
     if (inviteError) {
       console.error("[join] accept_workspace_invite:", inviteError.message)
     }
 
     const { data: member, error: memberError } = await supabase
       .from("members")
-      .select("id")
+      .select("id, workspace_id")
       .eq("user_id", user.id)
       .limit(1)
       .maybeSingle()
@@ -80,8 +81,14 @@ export function JoinWorkspace() {
       return
     }
 
+    const activeId = (workspaceId as string | null) ?? member.workspace_id
+    await fetch("/api/workspaces/active", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ workspace_id: activeId }),
+    })
+
     router.replace("/?channel=general")
-    router.refresh()
   }
 
   async function handleSetPassword(e: React.FormEvent) {
@@ -174,9 +181,9 @@ export function JoinWorkspace() {
 
             {error && <p className="text-sm text-destructive">{error}</p>}
 
-            <Button type="submit" className="w-full" disabled={saving}>
-              {saving ? "Joining…" : "Join workspace"}
-            </Button>
+            <LoadingButton type="submit" className="w-full" loading={saving}>
+              Join workspace
+            </LoadingButton>
           </form>
         </div>
       </div>

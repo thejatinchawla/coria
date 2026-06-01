@@ -1,20 +1,15 @@
 "use client"
 
 import { useCallback, useRef, useState } from "react"
-import Link from "next/link"
-import { ArrowLeft } from "lucide-react"
 import type { Member } from "@/types"
-import { SettingsNav } from "@/components/SettingsNav"
 import { Button } from "@/components/ui/button"
 import { useToast } from "@/components/Toast"
 import { createClient } from "@/lib/supabase"
 
 export function ProfileSettings({
-  workspaceName,
   initialProfile,
   userId,
 }: {
-  workspaceName: string
   initialProfile: Member
   userId: string
 }) {
@@ -73,24 +68,7 @@ export function ProfileSettings({
   }
 
   return (
-    <div className="mx-auto flex max-w-2xl flex-col gap-8 px-4 py-8">
-      <div className="flex items-center gap-3">
-        <Link
-          href="/?channel=general"
-          className="rounded-md p-2 text-muted-foreground hover:bg-muted"
-          aria-label="Back to chat"
-        >
-          <ArrowLeft className="size-5" />
-        </Link>
-        <div>
-          <h1 className="text-lg font-semibold">Profile</h1>
-          <p className="text-sm text-muted-foreground">{workspaceName}</p>
-        </div>
-      </div>
-
-      <SettingsNav />
-
-      <section className="space-y-4 rounded-lg border p-4">
+    <section className="space-y-4 rounded-lg border p-4">
         <div className="flex items-center gap-4">
           <div className="flex size-16 items-center justify-center overflow-hidden rounded-full bg-muted text-lg font-medium">
             {avatarUrl ? (
@@ -167,6 +145,5 @@ export function ProfileSettings({
           Save profile
         </Button>
       </section>
-    </div>
   )
 }
