@@ -301,6 +301,7 @@ export function Chat({
   useEffect(() => {
     const supabase = createClient()
     let active = true
+    let realtimeChannel: ReturnType<typeof supabase.channel> | null = null
 
     const mergeTopLevel = (incoming: Message[]) =>
       setMessages((prev) => {
@@ -313,113 +314,143 @@ export function Chat({
         )
       })
 
-    const realtime = supabase
-      .channel(`messages-${channel.id}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "messages",
-          filter: `channel_id=eq.${channel.id}`,
-        },
-        (payload) => {
-          const next = payload.new as Message
-          setMessages((prev) =>
-            prev.some((m) => m.id === next.id) ? prev : [...prev, next],
-          )
+    const handleInsert = (payload: { new: Record<string, unknown> }) => {
+      const next = payload.new as Message
 
-          if (next.thread_id) {
-            setThreadReplies((prev) => {
-              const list = prev[next.thread_id!] ?? []
-              if (list.some((m) => m.id === next.id)) return prev
-              return {
-                ...prev,
-                [next.thread_id!]: [...list, next],
-              }
-            })
-            setMessages((prev) =>
-              prev.map((m) =>
-                m.id === next.thread_id
-                  ? { ...m, reply_count: (m.reply_count ?? 0) + 1 }
-                  : m,
-              ),
-            )
+      if (next.thread_id) {
+        setThreadReplies((prev) => {
+          const list = prev[next.thread_id!] ?? []
+          if (list.some((m) => m.id === next.id)) return prev
+          return {
+            ...prev,
+            [next.thread_id!]: [...list, next],
           }
-
-          if (next.sender_type === "agent") {
-            setStreamState(null)
-          }
-        },
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "messages",
-          filter: `channel_id=eq.${channel.id}`,
-        },
-        (payload) => {
-          const next = payload.new as Message
-          setMessages((prev) =>
-            prev.map((m) => (m.id === next.id ? { ...m, ...next } : m)),
+        })
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === next.thread_id
+              ? { ...m, reply_count: (m.reply_count ?? 0) + 1 }
+              : m,
+          ),
+        )
+      } else {
+        setMessages((prev) => {
+          if (prev.some((m) => m.id === next.id)) return prev
+          return [...prev, next].sort((a, b) =>
+            a.created_at.localeCompare(b.created_at),
           )
-          if (next.thread_id) {
-            setThreadReplies((prev) => {
-              const list = prev[next.thread_id!]
-              if (!list) return prev
-              return {
-                ...prev,
-                [next.thread_id!]: list.map((m) =>
-                  m.id === next.id ? { ...m, ...next } : m,
-                ),
-              }
-            })
+        })
+      }
+
+      if (next.sender_type === "agent") {
+        setStreamState(null)
+      }
+    }
+
+    const {
+      data: { subscription: authSubscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.access_token) {
+        supabase.realtime.setAuth(session.access_token)
+      }
+    })
+
+    void (async () => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
+      if (!active) return
+
+      if (session?.access_token) {
+        supabase.realtime.setAuth(session.access_token)
+      }
+
+      realtimeChannel = supabase
+        .channel(`messages-${channel.id}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "INSERT",
+            schema: "public",
+            table: "messages",
+            filter: `channel_id=eq.${channel.id}`,
+          },
+          handleInsert,
+        )
+        .on(
+          "postgres_changes",
+          {
+            event: "UPDATE",
+            schema: "public",
+            table: "messages",
+            filter: `channel_id=eq.${channel.id}`,
+          },
+          (payload) => {
+            const next = payload.new as Message
+            if (next.thread_id) {
+              setThreadReplies((prev) => {
+                const list = prev[next.thread_id!]
+                if (!list) return prev
+                return {
+                  ...prev,
+                  [next.thread_id!]: list.map((m) =>
+                    m.id === next.id ? { ...m, ...next } : m,
+                  ),
+                }
+              })
+            } else {
+              setMessages((prev) =>
+                prev.map((m) => (m.id === next.id ? { ...m, ...next } : m)),
+              )
+            }
+            if (active) void loadPinnedMessages()
+          },
+        )
+        .on(
+          "postgres_changes",
+          {
+            event: "DELETE",
+            schema: "public",
+            table: "messages",
+            filter: `channel_id=eq.${channel.id}`,
+          },
+          (payload) => {
+            const removed = payload.old as Message
+            if (!removed?.id) return
+            applyMessageRemoved(removed)
+          },
+        )
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "action_blocks",
+            filter: `channel_id=eq.${channel.id}`,
+          },
+          () => {
+            if (active) void loadPendingBlocks()
+          },
+        )
+        .subscribe(async (status, err) => {
+          if (status === "CHANNEL_ERROR") {
+            console.error("[realtime] messages channel error:", err)
           }
-          if (active) void loadPinnedMessages()
-        },
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "DELETE",
-          schema: "public",
-          table: "messages",
-          filter: `channel_id=eq.${channel.id}`,
-        },
-        (payload) => {
-          const removed = payload.old as Message
-          if (!removed?.id) return
-          applyMessageRemoved(removed)
-        },
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "action_blocks",
-          filter: `channel_id=eq.${channel.id}`,
-        },
-        () => {
-          if (active) void loadPendingBlocks()
-        },
-      )
-      .subscribe(async (status) => {
-        if (status !== "SUBSCRIBED" || !active) return
-        const { data } = await supabase
-          .from("messages")
-          .select("*")
-          .eq("channel_id", channel.id)
-          .is("thread_id", null)
-          .order("created_at", { ascending: true })
-        if (active && data) mergeTopLevel(data as Message[])
-      })
+          if (status !== "SUBSCRIBED" || !active) return
+          const { data } = await supabase
+            .from("messages")
+            .select("*")
+            .eq("channel_id", channel.id)
+            .is("thread_id", null)
+            .order("created_at", { ascending: true })
+          if (active && data) mergeTopLevel(data as Message[])
+        })
+    })()
 
     return () => {
       active = false
-      supabase.removeChannel(realtime)
+      authSubscription.unsubscribe()
+      if (realtimeChannel) supabase.removeChannel(realtimeChannel)
     }
   }, [channel.id, loadPendingBlocks, loadPinnedMessages, applyMessageRemoved])
 
@@ -724,6 +755,7 @@ export function Chat({
               onPinToggle={handlePinToggle}
               onDelete={handleDeleteMessage}
               canDelete={messageCanDelete}
+              currentMemberId={memberId}
               pinLimitReached={pinLimitReached}
               threadProps={threadProps}
             />

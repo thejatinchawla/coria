@@ -83,6 +83,7 @@ export function ThreadInline({
                 ? () => onDelete(message)
                 : undefined
             }
+            currentMemberId={memberId}
           />
         ))}
         {streamState &&

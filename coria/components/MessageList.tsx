@@ -26,6 +26,7 @@ export function MessageList({
   pinLimitReached = false,
   onDelete,
   canDelete,
+  currentMemberId = null,
   activeStreamThreadId,
   threadProps,
 }: {
@@ -42,6 +43,7 @@ export function MessageList({
   pinLimitReached?: boolean
   onDelete?: (message: MessageType) => void
   canDelete?: (message: MessageType) => boolean
+  currentMemberId?: string | null
   activeStreamThreadId?: string | null
   threadProps?: {
     channelId: string
@@ -155,6 +157,7 @@ export function MessageList({
                   ? () => onDelete(message)
                   : undefined
               }
+              currentMemberId={currentMemberId ?? threadProps?.memberId ?? null}
             />
             {expandedThreadId === message.id &&
               threadProps &&

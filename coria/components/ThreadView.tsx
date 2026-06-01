@@ -89,9 +89,10 @@ export function ThreadView({
         highlightMessageId={highlightMessageId}
         onPinToggle={onPinToggle}
         pinLimitReached={pinLimitReached}
-        onDelete={onDelete}
-        canDelete={canDelete}
-      />
+          onDelete={onDelete}
+          canDelete={canDelete}
+          currentMemberId={memberId}
+        />
       <MessageInput
         channelId={channelId}
         channelSlug={channelSlug}

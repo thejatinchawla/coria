@@ -17,6 +17,27 @@ import { ReasoningTrace } from "@/components/ReasoningTrace"
 import { cn } from "@/lib/utils"
 import type { Agent, Message as MessageType } from "@/types"
 
+const incomingBubbleMaxWidth =
+  "w-fit max-w-[min(85%,32rem)] sm:max-w-[70%]"
+
+function humanInitials(name: string) {
+  const parts = name.trim().split(/\s+/).filter(Boolean)
+  if (parts.length === 0) return "?"
+  if (parts.length === 1) return parts[0]!.slice(0, 2).toUpperCase()
+  return `${parts[0]![0] ?? ""}${parts[1]![0] ?? ""}`.toUpperCase()
+}
+
+function isOwnHumanMessage(
+  message: MessageType,
+  currentMemberId: string | null | undefined,
+) {
+  return (
+    message.sender_type === "human" &&
+    currentMemberId != null &&
+    message.sender_id === currentMemberId
+  )
+}
+
 function MessageActionsMenu({
   isPinned,
   pinDisabled,
@@ -146,6 +167,7 @@ export function Message({
   pinDisabled = false,
   onDelete,
   highlight = false,
+  currentMemberId = null,
 }: {
   message: MessageType
   agent?: Agent | null
@@ -158,8 +180,10 @@ export function Message({
   pinDisabled?: boolean
   onDelete?: () => void
   highlight?: boolean
+  currentMemberId?: string | null
 }) {
   const isAgent = message.sender_type === "agent"
+  const isOwn = isOwnHumanMessage(message, currentMemberId)
   const [expanded, setExpanded] = useState(false)
   const count = message.reply_count ?? replyCount
   const isPinned = message.is_pinned === true
@@ -201,13 +225,13 @@ export function Message({
       "rounded-md ring-2 ring-primary/40 ring-offset-2 ring-offset-background",
   )
 
-  if (!isAgent) {
+  if (isOwn) {
     return (
       <div id={`message-${message.id}`} className={wrapperClass}>
         <div className="flex flex-col items-end gap-1">
           <div
             className={cn(
-              "max-w-[min(85%,32rem)] rounded-2xl rounded-br-sm bg-primary px-3 py-2 text-primary-foreground sm:max-w-[70%]",
+              "w-fit max-w-[min(85%,32rem)] rounded-2xl rounded-br-sm bg-primary px-3 py-2 text-primary-foreground sm:max-w-[70%]",
               compact ? "sm:max-w-[85%]" : "sm:px-4",
             )}
           >
@@ -232,17 +256,25 @@ export function Message({
   return (
     <div id={`message-${message.id}`} className={wrapperClass}>
       <div className="flex gap-2 sm:gap-3">
-        {!compact && (
-          <AgentAvatar
-            name={agent?.name ?? message.sender_name}
-            color={agent?.color}
-            avatarUrl={agent?.avatar_url}
-          />
-        )}
+        {!compact &&
+          (isAgent ? (
+            <AgentAvatar
+              name={agent?.name ?? message.sender_name}
+              color={agent?.color}
+              avatarUrl={agent?.avatar_url}
+            />
+          ) : (
+            <div
+              className="flex size-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-xs font-semibold text-primary sm:size-10"
+              aria-hidden
+            >
+              {humanInitials(message.sender_name)}
+            </div>
+          ))}
         <div
           className={cn(
-            "flex min-w-0 flex-1 flex-col gap-1",
-            compact ? "max-w-full" : "max-w-[min(85%,32rem)] sm:max-w-[70%]",
+            "flex flex-col gap-1",
+            compact ? "w-fit max-w-full" : incomingBubbleMaxWidth,
           )}
         >
           <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
@@ -255,14 +287,14 @@ export function Message({
               className="text-xs text-muted-foreground/70"
             />
           </div>
-          <div className="rounded-2xl rounded-tl-sm bg-muted px-3 py-2 sm:px-4">
+          <div className="w-fit rounded-2xl rounded-tl-sm bg-muted px-3 py-2 sm:px-4">
             <p className="text-sm whitespace-pre-wrap break-words">
               {message.content}
             </p>
           </div>
           {threadControl}
 
-          {message.reasoning_trace_id ? (
+          {isAgent && message.reasoning_trace_id ? (
             <div className="flex flex-col gap-1.5">
               <div className="flex items-center gap-1">
                 <Button
@@ -293,9 +325,7 @@ export function Message({
               )}
             </div>
           ) : (
-            <div className="flex items-center gap-2">
-              {actionsMenu}
-            </div>
+            <div className="flex items-center gap-2">{actionsMenu}</div>
           )}
         </div>
       </div>
