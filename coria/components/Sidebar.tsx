@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import Link from "next/link"
-import { LogOut, Plus, X } from "lucide-react"
+import { LogOut, Plus, Settings, X } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase"
 import { slugifyChannelName } from "@/lib/workspace"
@@ -175,6 +175,55 @@ export function Sidebar({
             </button>
           )}
         </nav>
+
+        <div className="space-y-0.5 border-t border-sidebar-border p-2">
+          <p className="px-3 py-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Settings
+          </p>
+          <Link
+            href="/settings/profile"
+            onClick={onClose}
+            className="flex items-center gap-2 rounded-md px-3 py-2 text-sm text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+          >
+            <Settings className="size-3.5" />
+            Profile
+          </Link>
+          <Link
+            href="/settings/agents"
+            onClick={onClose}
+            className="block rounded-md py-2 pl-9 pr-3 text-sm text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+          >
+            Agents
+          </Link>
+          <Link
+            href="/settings/members"
+            onClick={onClose}
+            className="block rounded-md py-2 pl-9 pr-3 text-sm text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+          >
+            Members
+          </Link>
+          <Link
+            href="/settings/integrations"
+            onClick={onClose}
+            className="block rounded-md py-2 pl-9 pr-3 text-sm text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+          >
+            Integrations
+          </Link>
+          <Link
+            href="/settings/triggers"
+            onClick={onClose}
+            className="block rounded-md py-2 pl-9 pr-3 text-sm text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+          >
+            Triggers
+          </Link>
+          <Link
+            href="/settings/audit"
+            onClick={onClose}
+            className="block rounded-md py-2 pl-9 pr-3 text-sm text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+          >
+            Audit log
+          </Link>
+        </div>
 
         <div className="space-y-2 border-t border-sidebar-border p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
           <div className="min-w-0">

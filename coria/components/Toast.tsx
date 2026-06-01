@@ -13,18 +13,18 @@ import { cn } from "@/lib/utils"
 type ToastItem = {
   id: number
   message: string
-  variant: "error" | "info"
+  variant: "error" | "success" | "info"
 }
 
 const ToastContext = createContext<{
-  toast: (message: string, variant?: "error" | "info") => void
+  toast: (message: string, variant?: "error" | "success" | "info") => void
 } | null>(null)
 
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [items, setItems] = useState<ToastItem[]>([])
 
   const toast = useCallback(
-    (message: string, variant: "error" | "info" = "error") => {
+    (message: string, variant: "error" | "success" | "info" = "error") => {
       const id = Date.now()
       setItems((prev) => [...prev, { id, message, variant }])
     },
@@ -53,9 +53,12 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
             key={item.id}
             className={cn(
               "pointer-events-auto flex items-start gap-2 rounded-lg border px-3 py-2 text-sm shadow-lg",
-              item.variant === "error"
-                ? "border-destructive/40 bg-destructive/10 text-destructive"
-                : "border-border bg-card text-card-foreground",
+              item.variant === "error" &&
+                "border-destructive/40 bg-destructive/10 text-destructive",
+              item.variant === "success" &&
+                "border-green-500/40 bg-green-500/10 text-green-700 dark:text-green-400",
+              item.variant === "info" &&
+                "border-border bg-card text-card-foreground",
             )}
           >
             <p className="flex-1">{item.message}</p>

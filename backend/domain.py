@@ -2,6 +2,8 @@
 
 from fastapi import HTTPException
 
+from workspace_settings import assert_agents_not_globally_paused
+
 
 def fetch_channel(supabase, channel_id: str) -> dict:
     result = (
@@ -22,7 +24,8 @@ def fetch_agent(supabase, agent_id: str) -> dict:
         supabase.table("agents")
         .select(
             "id,workspace_id,name,mention_slug,model,system_prompt,"
-            "allowed_tools,channel_scope,status"
+            "allowed_tools,channel_scope,status,avatar_url,color,"
+            "use_workspace_memory"
         )
         .eq("id", agent_id)
         .limit(1)
@@ -34,9 +37,15 @@ def fetch_agent(supabase, agent_id: str) -> dict:
     return rows[0]
 
 
-def validate_invoke_scope(agent: dict, channel: dict) -> None:
+def validate_invoke_scope(supabase, agent: dict, channel: dict) -> None:
+    assert_agents_not_globally_paused(supabase, channel["workspace_id"])
+
     if agent["status"] != "active":
-        raise HTTPException(status_code=403, detail="Agent is not active")
+        name = agent.get("name") or "Agent"
+        raise HTTPException(
+            status_code=403,
+            detail=f"{name} is paused. Resume the agent in settings to continue.",
+        )
 
     if agent["workspace_id"] != channel["workspace_id"]:
         raise HTTPException(status_code=403, detail="Agent not in channel workspace")

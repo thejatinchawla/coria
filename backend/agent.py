@@ -10,10 +10,13 @@ from groq import AsyncGroq, BadRequestError
 from db import get_supabase
 from domain import fetch_agent, fetch_channel, validate_invoke_scope
 from memory.embed import embed_message_row
+from memory.context import build_retrieval_context
 from memory.retrieve import retrieve_channel_memory
 from prompts import ARIA_SYSTEM_PROMPT
 from serialization import serialize_messages
+from tool_runner import ApprovalPaused, run_tool_with_broker
 from tools import TOOL_DEFINITIONS, TOOL_REGISTRY, tools_for_agent
+from broker import ToolContext
 
 # Hard cap on the agentic loop. With tools running this is the primary guard
 # against an infinite call -> tool -> call cycle, which is the #1 cost/abuse risk.
@@ -29,11 +32,12 @@ def now_iso() -> str:
 def fetch_recent_messages(
     supabase, channel_id: str, limit: int = RECENT_MESSAGE_LIMIT
 ) -> list[dict]:
-    """Load the last N channel messages for prompt context (no vectors)."""
+    """Load the last N top-level channel messages (no vectors)."""
     result = (
         supabase.table("messages")
         .select("sender_name,sender_type,content,created_at")
         .eq("channel_id", channel_id)
+        .is_("thread_id", "null")
         .order("created_at", desc=True)
         .limit(limit)
         .execute()
@@ -43,31 +47,60 @@ def fetch_recent_messages(
     return rows
 
 
-def _format_message_lines(rows: list[dict]) -> str:
+def _format_message_lines(
+    rows: list[dict], *, include_timestamps: bool = False
+) -> str:
+    lines: list[str] = []
+    for row in rows:
+        name = row.get("sender_name", "?")
+        content = row.get("content", "")
+        if row.get("thread_id"):
+            name = f"{name} (thread reply)"
+        if include_timestamps and row.get("created_at"):
+            lines.append(f"[{row['created_at']}] {name}: {content}")
+        else:
+            lines.append(f"{name}: {content}")
+    return "\n".join(lines)
+
+
+def _format_memory_chunks(chunks: list[dict], *, prefix: str = "") -> str:
+    lines: list[str] = []
+    for chunk in chunks:
+        meta = chunk.get("metadata") or {}
+        who = meta.get("sender_name") or "?"
+        when = meta.get("created_at") or ""
+        ch = meta.get("channel_slug") or meta.get("channel_name")
+        channel_tag = f"#{ch} · " if ch else ""
+        sim = chunk.get("similarity")
+        score = f" (relevance {sim:.2f})" if sim is not None else ""
+        lines.append(
+            f"[{prefix}{channel_tag}{when}] {who}{score}: {chunk.get('content', '')}"
+        )
+    return "\n".join(lines)
+
+
+def _format_thread_messages(rows: list[dict]) -> str:
     return "\n".join(
         f"{row.get('sender_name', '?')}: {row.get('content', '')}"
         for row in rows
     )
 
 
-def _format_memory_chunks(chunks: list[dict]) -> str:
-    lines: list[str] = []
-    for chunk in chunks:
-        meta = chunk.get("metadata") or {}
-        who = meta.get("sender_name") or "?"
-        when = meta.get("created_at") or ""
-        sim = chunk.get("similarity")
-        score = f" (relevance {sim:.2f})" if sim is not None else ""
-        lines.append(f"[{when}] {who}{score}: {chunk.get('content', '')}")
-    return "\n".join(lines)
-
-
 def build_system_prompt(
     base_prompt: str = ARIA_SYSTEM_PROMPT,
+    thread_messages: list[dict] | None = None,
     memory_chunks: list[dict] | None = None,
+    workspace_chunks: list[dict] | None = None,
     recent_messages: list[dict] | None = None,
+    digest_mode: bool = False,
 ) -> str:
     parts = [base_prompt]
+
+    if thread_messages:
+        parts.append(
+            "Current thread (oldest first):\n"
+            + _format_thread_messages(thread_messages)
+        )
 
     if memory_chunks:
         parts.append(
@@ -75,17 +108,40 @@ def build_system_prompt(
             + _format_memory_chunks(memory_chunks)
         )
 
-    if recent_messages:
+    if workspace_chunks:
         parts.append(
-            "Very recent messages (oldest first):\n"
-            + _format_message_lines(recent_messages)
+            "Relevant workspace history across channels (cite channel when answering):\n"
+            + _format_memory_chunks(workspace_chunks)
         )
 
-    parts.append(
-        "The latest @mention from a teammate is your immediate task. "
-        "Prefer retrieved history for older context; use very recent messages "
-        "for what just happened; use web_search when you need current facts."
-    )
+    if recent_messages:
+        if digest_mode:
+            parts.append(
+                "Channel activity for your digest (last 24 hours, oldest first):\n"
+                + _format_message_lines(recent_messages, include_timestamps=True)
+            )
+        else:
+            parts.append(
+                "Very recent channel messages (oldest first):\n"
+                + _format_message_lines(recent_messages)
+            )
+
+    if digest_mode:
+        parts.append(
+            "This is a scheduled channel digest. Summarize the channel activity "
+            "above as instructed. Do not say you lack access to channel history — "
+            "the messages are provided in this prompt. If there was no activity, "
+            "say the channel was quiet."
+        )
+    else:
+        parts.append(
+            "The latest @mention from a teammate is your immediate task. "
+            "Prefer thread context when replying in a thread. "
+            "Prefer retrieved history for older context; use very recent messages "
+            "for what just happened; use workspace_search or web_search when you "
+            "need facts from other channels or the web. Cite channel names (e.g. #product) "
+            "when using workspace memory."
+        )
     return "\n\n".join(parts)
 
 
@@ -152,6 +208,10 @@ async def _run_groq_tool(
     tool_call_id: str,
     working: list[dict],
     steps: list[dict],
+    *,
+    supabase=None,
+    ctx: ToolContext | None = None,
+    trace_id: str | None = None,
 ) -> None:
     """Execute one tool call and append assistant + tool messages to the loop."""
     working.append(
@@ -179,11 +239,24 @@ async def _run_groq_tool(
         }
     )
 
-    tool_fn = TOOL_REGISTRY.get(name)
-    if tool_fn is None:
-        result = {"error": f"unknown tool: {name}"}
-    else:
-        result = await tool_fn(args)
+    try:
+        if supabase is not None and ctx is not None:
+            result = await run_tool_with_broker(
+                supabase,
+                name=name,
+                args=args,
+                tool_call_id=tool_call_id,
+                ctx=ctx,
+                trace_id=trace_id,
+            )
+        else:
+            tool_fn = TOOL_REGISTRY.get(name)
+            if tool_fn is None:
+                result = {"error": f"unknown tool: {name}"}
+            else:
+                result = await tool_fn(args)
+    except ApprovalPaused:
+        raise
 
     steps.append(
         {
@@ -415,7 +488,7 @@ async def invoke_agent(user_message: str, channel_id: str, agent_id: str) -> Non
 
         channel = fetch_channel(supabase, channel_id)
         agent = fetch_agent(supabase, agent_id)
-        validate_invoke_scope(agent, channel)
+        validate_invoke_scope(supabase, agent, channel)
         aria_name = agent.get("name") or "Aria"
         aria_agent_id = agent.get("id")
 

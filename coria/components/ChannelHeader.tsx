@@ -1,32 +1,225 @@
-import { Menu } from "lucide-react"
+"use client"
+
+import { useState } from "react"
+import Link from "next/link"
+import {
+  Menu,
+  MessageSquare,
+  Pin,
+  Search,
+  Settings,
+  ShieldAlert,
+  X,
+} from "lucide-react"
+import type { MessageSearchHit } from "@/types"
+import { cn } from "@/lib/utils"
+
+export type ChannelTab = "messages" | "pins"
+
+function ChannelTabButton({
+  active,
+  icon: Icon,
+  label,
+  count,
+  onClick,
+}: {
+  active: boolean
+  icon: typeof MessageSquare
+  label: string
+  count?: number
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "relative flex items-center gap-1.5 px-3 py-2.5 text-sm font-medium transition-colors",
+        active
+          ? "text-foreground"
+          : "text-muted-foreground hover:text-foreground",
+      )}
+    >
+      <Icon className="size-4 shrink-0" />
+      <span>{label}</span>
+      {count !== undefined && count > 0 && (
+        <span
+          className={cn(
+            "rounded-full px-1.5 py-0.5 text-[10px] font-semibold leading-none",
+            active
+              ? "bg-foreground/10 text-foreground"
+              : "bg-muted text-muted-foreground",
+          )}
+        >
+          {count}
+        </span>
+      )}
+      {active && (
+        <span
+          className="absolute inset-x-1 bottom-0 h-0.5 rounded-full bg-foreground"
+          aria-hidden
+        />
+      )}
+    </button>
+  )
+}
 
 export function ChannelHeader({
   channelName,
   workspaceName,
+  channelDescription,
+  activeTab = "messages",
+  pinnedCount = 0,
+  onTabChange,
+  pendingApprovalCount = 0,
+  searchQuery = "",
+  searchResults = [],
+  onSearchChange,
+  onSearchSelect,
   onMenuOpen,
 }: {
   channelName: string
   workspaceName: string
+  channelDescription?: string
+  activeTab?: ChannelTab
+  pinnedCount?: number
+  onTabChange?: (tab: ChannelTab) => void
+  pendingApprovalCount?: number
+  searchQuery?: string
+  searchResults?: MessageSearchHit[]
+  onSearchChange?: (query: string) => void
+  onSearchSelect?: (hit: MessageSearchHit) => void
   onMenuOpen: () => void
 }) {
+  const [searchOpen, setSearchOpen] = useState(false)
+
+  const subtitle =
+    channelDescription ??
+    (channelName === "general"
+      ? "Workspace-wide updates and announcements"
+      : workspaceName)
+
   return (
-    <header className="flex h-14 shrink-0 items-center border-b px-3 sm:px-6">
-      <button
-        type="button"
-        aria-label="Open menu"
-        onClick={onMenuOpen}
-        className="-ml-1 rounded-md p-2 text-muted-foreground hover:bg-muted md:hidden"
-      >
-        <Menu className="size-5" />
-      </button>
-      <div className="flex min-w-0 items-baseline gap-2">
-        <span className="truncate text-sm font-semibold text-muted-foreground">
-          #{channelName}
-        </span>
-        <span className="hidden text-xs text-muted-foreground/70 sm:inline">
-          {workspaceName}
-        </span>
+    <header className="relative shrink-0 border-b bg-background">
+      <div className="flex min-h-12 items-center justify-between gap-2 px-3 py-2 sm:px-6">
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <button
+            type="button"
+            aria-label="Open menu"
+            onClick={onMenuOpen}
+            className="-ml-1 shrink-0 rounded-md p-2 text-muted-foreground hover:bg-muted md:hidden"
+          >
+            <Menu className="size-5" />
+          </button>
+          <div className="min-w-0">
+            <div className="flex min-w-0 items-baseline gap-2">
+              <h1 className="truncate text-[15px] font-bold">#{channelName}</h1>
+              <span className="hidden truncate text-sm text-muted-foreground sm:inline">
+                {subtitle}
+              </span>
+            </div>
+            <span className="truncate text-xs text-muted-foreground sm:hidden">
+              {subtitle}
+            </span>
+          </div>
+        </div>
+        <div className="flex shrink-0 items-center gap-0.5">
+          {pendingApprovalCount > 0 && (
+            <span
+              className={cn(
+                "mr-1 flex items-center gap-1 rounded-full bg-amber-500/15 px-2.5 py-1 text-xs font-medium text-amber-700 dark:text-amber-400",
+              )}
+              title="Pending approvals in this channel"
+            >
+              <ShieldAlert className="size-3.5" />
+              {pendingApprovalCount}
+            </span>
+          )}
+          <button
+            type="button"
+            aria-label="Search messages"
+            onClick={() => setSearchOpen((v) => !v)}
+            className="rounded-md p-2 text-muted-foreground hover:bg-muted"
+          >
+            <Search className="size-5" />
+          </button>
+          <Link
+            href="/settings/agents"
+            className="rounded-md p-2 text-muted-foreground hover:bg-muted"
+            aria-label="Agent settings"
+          >
+            <Settings className="size-5" />
+          </Link>
+        </div>
       </div>
+
+      {onTabChange && (
+        <nav
+          className="flex items-center gap-0.5 border-t border-border/60 px-1 sm:px-4"
+          aria-label="Channel views"
+        >
+          <ChannelTabButton
+            active={activeTab === "messages"}
+            icon={MessageSquare}
+            label="Messages"
+            onClick={() => onTabChange("messages")}
+          />
+          <ChannelTabButton
+            active={activeTab === "pins"}
+            icon={Pin}
+            label="Pins"
+            count={pinnedCount}
+            onClick={() => onTabChange("pins")}
+          />
+        </nav>
+      )}
+
+      {searchOpen && onSearchChange && (
+        <div className="absolute inset-x-0 top-full z-20 border-b bg-background p-3 shadow-md">
+          <div className="mx-auto flex max-w-3xl items-center gap-2">
+            <input
+              type="search"
+              value={searchQuery}
+              onChange={(e) => onSearchChange(e.target.value)}
+              placeholder="Search messages in this channel…"
+              className="flex-1 rounded-md border border-input bg-transparent px-3 py-2 text-sm outline-none focus-visible:border-ring"
+              autoFocus
+            />
+            <button
+              type="button"
+              aria-label="Close search"
+              onClick={() => {
+                setSearchOpen(false)
+                onSearchChange("")
+              }}
+              className="rounded-md p-2 text-muted-foreground hover:bg-muted"
+            >
+              <X className="size-4" />
+            </button>
+          </div>
+          {searchResults.length > 0 && onSearchSelect && (
+            <ul className="mx-auto mt-2 max-h-48 max-w-3xl overflow-y-auto rounded-md border">
+              {searchResults.map((hit) => (
+                <li key={hit.id}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onSearchSelect(hit)
+                      setSearchOpen(false)
+                    }}
+                    className="flex w-full flex-col gap-0.5 px-3 py-2 text-left text-sm hover:bg-muted"
+                  >
+                    <span className="font-medium">{hit.sender_name}</span>
+                    <span className="line-clamp-2 text-muted-foreground">
+                      {hit.content}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
     </header>
   )
 }

@@ -4,40 +4,65 @@ import { useMemo, useRef, useState } from "react"
 import { Send } from "lucide-react"
 import { createClient } from "@/lib/supabase"
 import { streamInvoke } from "@/lib/stream-invoke"
+import { fetchAgentBySlug } from "@/lib/workspace"
 import { useToast } from "@/components/Toast"
+import { AgentAvatar } from "@/components/AgentAvatar"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
+import type { ActionBlock, Agent, Message } from "@/types"
 
-const ARIA_MENTION = "@aria"
+function agentDescription(agent: Agent): string {
+  if (agent.template_id === "engineering") return "Engineering agent"
+  if (agent.template_id === "research") return "Research agent"
+  if (agent.mention_slug === "divv") return "Default teammate"
+  return "AI teammate"
+}
 
-function isPartialAriaMention(text: string): boolean {
+function matchingAgents(text: string, agents: Agent[]) {
   const match = text.match(/^@(\w*)$/)
-  if (!match) return false
+  if (!match) return []
   const partial = match[1].toLowerCase()
-  if (partial === "aria") return false
-  return "aria".startsWith(partial)
+  return agents.filter(
+    (a) => a.status === "active" && a.mention_slug.startsWith(partial),
+  )
 }
 
 export function MessageInput({
   channelId,
   channelSlug,
-  agentId,
+  workspaceId,
+  defaultAgentId,
+  agents,
+  agentsGloballyPaused = false,
+  memberId,
   senderName,
+  threadId = null,
+  compact = false,
   onStreamStart,
   onStreamStatus,
   onStreamToken,
   onStreamEnd,
   onStreamError,
+  onActionBlock,
+  onMessageSent,
 }: {
   channelId: string
   channelSlug: string
-  agentId: string
+  workspaceId: string
+  defaultAgentId: string
+  agents: Agent[]
+  agentsGloballyPaused?: boolean
+  memberId: string | null
   senderName: string
-  onStreamStart?: () => void
+  threadId?: string | null
+  compact?: boolean
+  onStreamStart?: (agent: Pick<Agent, "name" | "color" | "avatar_url">) => void
   onStreamStatus?: (status: string) => void
   onStreamToken?: (token: string) => void
   onStreamEnd?: () => void
   onStreamError?: () => void
+  onActionBlock?: (block: ActionBlock) => void
+  onMessageSent?: (message: Message) => void
 }) {
   const { toast } = useToast()
   const [text, setText] = useState("")
@@ -45,8 +70,9 @@ export function MessageInput({
   const [hintIndex, setHintIndex] = useState(0)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
-  const showAriaHint = useMemo(() => isPartialAriaMention(text), [text])
-  const canSend = text.trim().length > 0 && !sending
+  const hintAgents = useMemo(() => matchingAgents(text, agents), [text, agents])
+  const showAgentHint = hintAgents.length > 0
+  const canSend = text.trim().length > 0 && !sending && !agentsGloballyPaused
 
   async function send() {
     const content = text.trim()
@@ -54,21 +80,30 @@ export function MessageInput({
 
     setSending(true)
     const supabase = createClient()
+    const insertRow: Record<string, unknown> = {
+      channel_id: channelId,
+      sender_name: senderName,
+      sender_type: "human",
+      content,
+    }
+    if (threadId) {
+      insertRow.thread_id = threadId
+      insertRow.parent_message_id = threadId
+    }
     const { data: inserted, error } = await supabase
       .from("messages")
-      .insert({
-        channel_id: channelId,
-        sender_name: senderName,
-        sender_type: "human",
-        content,
-      })
-      .select("id")
+      .insert(insertRow)
+      .select("*")
       .single()
 
     if (error) {
       setSending(false)
       toast(`Could not send message: ${error.message}`)
       return
+    }
+
+    if (inserted) {
+      onMessageSent?.(inserted as Message)
     }
 
     if (inserted?.id) {
@@ -81,20 +116,52 @@ export function MessageInput({
       })
     }
 
-    const mentionMatch = content.match(/^@aria\s+([\s\S]+)/i)
+    // Keyword triggers (skip @mention invokes — backend debounces per trigger)
+    if (!threadId) {
+      fetch("/api/triggers/keyword", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          channel_id: channelId,
+          content,
+        }),
+      }).catch(() => {
+        /* non-blocking */
+      })
+    }
+
+    const mentionMatch = content.match(/^@(\w+)\s+([\s\S]+)/i)
     if (mentionMatch) {
-      const userMessage = mentionMatch[1]
-      onStreamStart?.()
+      const slug = mentionMatch[1].toLowerCase()
+      const userMessage = mentionMatch[2].trim()
+      const resolvedAgentId =
+        (await fetchAgentBySlug(supabase, workspaceId, slug)) ??
+        defaultAgentId
+      const resolvedAgent =
+        agents.find((a) => a.id === resolvedAgentId) ??
+        agents.find((a) => a.mention_slug === slug) ??
+        null
+
+      onStreamStart?.({
+        name: resolvedAgent?.name ?? slug,
+        color: resolvedAgent?.color,
+        avatar_url: resolvedAgent?.avatar_url,
+      })
       try {
         await streamInvoke(
           {
             user_message: userMessage,
             channel_id: channelId,
-            agent_id: agentId,
+            agent_id: resolvedAgentId,
+            invoker_member_id: memberId,
+            thread_id: threadId,
           },
           {
             onStatus: onStreamStatus,
             onToken: onStreamToken,
+            onActionBlock: (block) => onActionBlock?.(block),
+            onAwaitingApproval: onStreamEnd,
+            onDone: (message) => onMessageSent?.(message),
             onError: (message) => {
               toast(message)
               onStreamError?.()
@@ -115,22 +182,28 @@ export function MessageInput({
     textareaRef.current?.focus()
   }
 
-  function completeAriaMention() {
-    setText(`${ARIA_MENTION} `)
+  function completeMention(slug: string) {
+    setText(`@${slug} `)
     setHintIndex(0)
     textareaRef.current?.focus()
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if (showAriaHint) {
+    if (showAgentHint) {
       if (e.key === "Tab" || (e.key === "Enter" && !e.shiftKey)) {
         e.preventDefault()
-        completeAriaMention()
+        const agent = hintAgents[hintIndex] ?? hintAgents[0]
+        if (agent) completeMention(agent.mention_slug)
         return
       }
-      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      if (e.key === "ArrowDown") {
         e.preventDefault()
-        setHintIndex(0)
+        setHintIndex((i) => Math.min(i + 1, hintAgents.length - 1))
+        return
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault()
+        setHintIndex((i) => Math.max(i - 1, 0))
         return
       }
       if (e.key === "Escape") {
@@ -160,40 +233,47 @@ export function MessageInput({
         e.preventDefault()
         void send()
       }}
-      className="shrink-0 border-t px-3 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-6 sm:py-4"
+      className={
+        compact
+          ? "shrink-0"
+          : "shrink-0 border-t px-3 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-6 sm:py-4"
+      }
     >
-      <div className="relative mx-auto max-w-3xl">
-        {showAriaHint && (
+      <div className={compact ? "" : "relative mx-auto max-w-3xl"}>
+        {showAgentHint && (
           <div
-            id="aria-mention-hint"
+            id="agent-mention-hint"
             role="listbox"
             aria-label="Mention suggestions"
             className="absolute bottom-full left-0 z-10 mb-2 w-full overflow-hidden rounded-md border border-border bg-popover shadow-md"
           >
-            <button
-              type="button"
-              role="option"
-              aria-selected={hintIndex === 0}
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={completeAriaMention}
-              className={cn(
-                "flex w-full items-center gap-3 px-3 py-2 text-left text-sm transition-colors hover:bg-accent",
-                hintIndex === 0 && "bg-accent",
-              )}
-            >
-              <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary/20 text-xs font-medium">
-                A
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="font-medium">{ARIA_MENTION}</span>
-                <span className="ml-2 text-muted-foreground">
-                  AI teammate
+            {hintAgents.map((agent, i) => (
+              <button
+                key={agent.id}
+                type="button"
+                role="option"
+                aria-selected={hintIndex === i}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => completeMention(agent.mention_slug)}
+                className={cn(
+                  "flex w-full items-center gap-3 px-3 py-2 text-left text-sm transition-colors hover:bg-accent",
+                  hintIndex === i && "bg-accent",
+                )}
+              >
+                <AgentAvatar
+                  name={agent.name}
+                  color={agent.color}
+                  avatarUrl={agent.avatar_url}
+                  size="sm"
+                />
+                <span className="min-w-0 flex-1">
+                  <span className="font-medium">@{agent.mention_slug}</span>
+                  <span className="ml-2 text-muted-foreground">
+                    {agentDescription(agent)}
+                  </span>
                 </span>
-              </span>
-              <kbd className="hidden rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground sm:inline">
-                Tab
-              </kbd>
-            </button>
+              </button>
+            ))}
           </div>
         )}
 
@@ -204,10 +284,16 @@ export function MessageInput({
             onChange={handleChange}
             onKeyDown={handleKeyDown}
             rows={1}
-            placeholder={`Message #${channelSlug} — @aria to ask`}
-            disabled={sending}
+            placeholder={
+              agentsGloballyPaused
+                ? "All agents are paused"
+                : threadId
+                  ? "Reply in thread…"
+                  : `Message #${channelSlug} — @divv, @aria, @dev…`
+            }
+            disabled={sending || agentsGloballyPaused}
             aria-autocomplete="list"
-            aria-controls={showAriaHint ? "aria-mention-hint" : undefined}
+            aria-controls={showAgentHint ? "agent-mention-hint" : undefined}
             className="flex min-h-9 flex-1 resize-none rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50"
           />
           <Button

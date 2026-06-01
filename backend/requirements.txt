@@ -7,3 +7,4 @@ supabase==2.9.0
 pydantic==2.9.2
 httpx==0.27.2
 fastembed==0.7.4
+croniter==2.0.5

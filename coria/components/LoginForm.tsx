@@ -13,7 +13,9 @@ export function LoginForm({ authError }: { authError?: boolean }) {
   const [password, setPassword] = useState("")
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState<string | null>(
-    authError ? "Sign-in failed. Try again." : null,
+    authError
+      ? "Could not complete sign-in. Open the invite link from your email again, or sign in below."
+      : null,
   )
 
   async function handleSubmit(e: React.FormEvent) {

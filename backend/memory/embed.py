@@ -6,6 +6,7 @@ from functools import lru_cache
 from typing import Any
 
 from db import get_supabase
+from workspace_settings import fetch_workspace_settings
 
 EMBEDDING_DIM = 384
 MIN_CONTENT_LEN = int(os.getenv("MEMORY_MIN_CONTENT_LEN", "12"))
@@ -40,12 +41,58 @@ def _should_embed(content: str) -> bool:
     return len(text) >= MIN_CONTENT_LEN
 
 
+def _channel_meta(supabase, channel_id: str) -> dict[str, str]:
+    result = (
+        supabase.table("channels")
+        .select("slug,name")
+        .eq("id", channel_id)
+        .limit(1)
+        .execute()
+    )
+    rows = result.data or []
+    if not rows:
+        return {"channel_slug": "unknown", "channel_name": "unknown"}
+    row = rows[0]
+    return {
+        "channel_slug": row.get("slug") or "unknown",
+        "channel_name": row.get("name") or "unknown",
+    }
+
+
+def _upsert_memory_item(
+    supabase,
+    *,
+    workspace_id: str,
+    channel_id: str,
+    message_id: str,
+    content: str,
+    embedding: list[float],
+    metadata: dict[str, Any],
+    memory_tier: str,
+    thread_id: str | None,
+) -> None:
+    supabase.table("memory_items").upsert(
+        {
+            "workspace_id": workspace_id,
+            "channel_id": channel_id,
+            "source_type": "message",
+            "source_id": message_id,
+            "content": content,
+            "embedding": embedding,
+            "metadata": metadata,
+            "memory_tier": memory_tier,
+            "thread_id": thread_id,
+        },
+        on_conflict="source_type,source_id,memory_tier",
+    ).execute()
+
+
 def embed_message_row(
     supabase,
     message: dict[str, Any],
     workspace_id: str,
 ) -> bool:
-    """Upsert one message into memory_items. Returns True if stored."""
+    """Upsert channel + optional workspace tier memory. Returns True if stored."""
     content = (message.get("content") or "").strip()
     if not _should_embed(content):
         return False
@@ -62,25 +109,46 @@ def embed_message_row(
         traceback.print_exc()
         return False
 
+    channel_info = _channel_meta(supabase, channel_id)
+    thread_id = message.get("thread_id")
     metadata = {
         "sender_name": message.get("sender_name"),
         "sender_type": message.get("sender_type"),
         "created_at": message.get("created_at"),
+        "channel_id": channel_id,
+        "channel_slug": channel_info["channel_slug"],
+        "channel_name": channel_info["channel_name"],
+        "thread_id": thread_id,
     }
 
+    clipped = content[:MAX_CONTENT_LEN]
     try:
-        supabase.table("memory_items").upsert(
-            {
-                "workspace_id": workspace_id,
-                "channel_id": channel_id,
-                "source_type": "message",
-                "source_id": message_id,
-                "content": content[:MAX_CONTENT_LEN],
-                "embedding": embedding,
-                "metadata": metadata,
-            },
-            on_conflict="source_type,source_id",
-        ).execute()
+        _upsert_memory_item(
+            supabase,
+            workspace_id=workspace_id,
+            channel_id=channel_id,
+            message_id=message_id,
+            content=clipped,
+            embedding=embedding,
+            metadata=metadata,
+            memory_tier="channel",
+            thread_id=thread_id,
+        )
+
+        settings = fetch_workspace_settings(supabase, workspace_id)
+        if settings.get("workspace_memory_enabled", True):
+            _upsert_memory_item(
+                supabase,
+                workspace_id=workspace_id,
+                channel_id=channel_id,
+                message_id=message_id,
+                content=clipped,
+                embedding=embedding,
+                metadata=metadata,
+                memory_tier="workspace",
+                thread_id=thread_id,
+            )
+
         print(f"[memory] embedded message {message_id}", flush=True)
         return True
     except Exception as e:
@@ -95,7 +163,7 @@ def embed_message_by_id(message_id: str) -> None:
         msg_result = (
             supabase.table("messages")
             .select(
-                "id,channel_id,content,sender_name,sender_type,created_at"
+                "id,channel_id,content,sender_name,sender_type,created_at,thread_id"
             )
             .eq("id", message_id)
             .limit(1)
@@ -153,6 +221,7 @@ def backfill_channel_memory(channel_id: str) -> int:
         .select("source_id")
         .eq("channel_id", channel_id)
         .eq("source_type", "message")
+        .eq("memory_tier", "channel")
         .execute()
     )
     done_ids = {r["source_id"] for r in (mem_result.data or [])}
@@ -163,7 +232,7 @@ def backfill_channel_memory(channel_id: str) -> int:
         msg_result = (
             supabase.table("messages")
             .select(
-                "id,channel_id,content,sender_name,sender_type,created_at"
+                "id,channel_id,content,sender_name,sender_type,created_at,thread_id"
             )
             .eq("channel_id", channel_id)
             .order("created_at", desc=False)

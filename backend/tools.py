@@ -1,9 +1,10 @@
-"""Tool registry — Tavily web search + GitHub read (public API)."""
+"""Tool registry — Tavily web search + GitHub read/post."""
 
-import base64
-import os
-
-import httpx
+from integrations.github import (
+    github_create_pr,
+    github_post_comment,
+    github_read,
+)
 
 TOOL_DEFINITIONS: list[dict] = [
     {
@@ -50,10 +51,104 @@ TOOL_DEFINITIONS: list[dict] = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "workspace_search",
+            "description": (
+                "Search workspace memory across all channels for past decisions, "
+                "discussions, and context. Use when the user asks about something "
+                "that may have happened in another channel. Results include channel names."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "What to search for in workspace history",
+                    },
+                },
+                "required": ["query"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "github_post_comment",
+            "description": (
+                "Post a comment on a GitHub issue. Requires human approval before "
+                "the comment is published. Use when the user asks you to comment on "
+                "or reply to a specific issue."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "repo": {
+                        "type": "string",
+                        "description": "Repository as owner/name",
+                    },
+                    "issue_number": {
+                        "type": "integer",
+                        "description": "Issue number to comment on",
+                    },
+                    "body": {
+                        "type": "string",
+                        "description": "Comment text (markdown supported)",
+                    },
+                },
+                "required": ["repo", "issue_number", "body"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "github_create_pr",
+            "description": (
+                "Open a draft pull request on GitHub. Requires human approval. "
+                "Use when asked to create a PR from a branch."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "repo": {
+                        "type": "string",
+                        "description": "Repository as owner/name",
+                    },
+                    "title": {
+                        "type": "string",
+                        "description": "PR title",
+                    },
+                    "head": {
+                        "type": "string",
+                        "description": "Head branch (source)",
+                    },
+                    "base": {
+                        "type": "string",
+                        "description": "Base branch (target), default main",
+                    },
+                    "body": {
+                        "type": "string",
+                        "description": "PR description (markdown)",
+                    },
+                    "draft": {
+                        "type": "boolean",
+                        "description": "Create as draft PR (default true)",
+                    },
+                },
+                "required": ["repo", "title", "head"],
+            },
+        },
+    },
 ]
 
 
 async def web_search(args: dict) -> dict:
+    import os
+
+    import httpx
+
     query = (args.get("query") or "").strip()
     if not query:
         return {"error": "query is required"}
@@ -91,93 +186,42 @@ async def web_search(args: dict) -> dict:
     }
 
 
-def _parse_repo(repo: str) -> tuple[str, str] | None:
-    repo = repo.strip().strip("/")
-    if repo.startswith("https://github.com/"):
-        repo = repo.removeprefix("https://github.com/")
-    parts = [p for p in repo.split("/") if p]
-    if len(parts) < 2:
-        return None
-    return parts[0], parts[1]
+async def workspace_search(
+    args: dict,
+    *,
+    supabase=None,
+    ctx=None,
+) -> dict:
+    from memory.retrieve import retrieve_workspace_memory
 
+    query = (args.get("query") or "").strip()
+    if not query:
+        return {"error": "query is required"}
+    if supabase is None or ctx is None:
+        return {"error": "workspace_search context unavailable"}
 
-async def github_read(args: dict) -> dict:
-    repo_raw = (args.get("repo") or "").strip()
-    parsed = _parse_repo(repo_raw)
-    if not parsed:
-        return {"error": "repo must be owner/name (e.g. vercel/next.js)"}
-
-    owner, name = parsed
-    headers = {
-        "Accept": "application/vnd.github+json",
-        "User-Agent": "coria-agent",
-    }
-    token = os.getenv("GITHUB_TOKEN", "").strip()
-    if token:
-        headers["Authorization"] = f"Bearer {token}"
-
-    base = f"https://api.github.com/repos/{owner}/{name}"
-    issue_number = args.get("issue_number")
-
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        repo_resp = await client.get(base, headers=headers)
-        if repo_resp.status_code == 404:
-            return {"error": f"repository not found: {owner}/{name}"}
-        repo_resp.raise_for_status()
-        repo_data = repo_resp.json()
-
-        readme_text = None
-        readme_resp = await client.get(f"{base}/readme", headers=headers)
-        if readme_resp.status_code == 200:
-            readme_json = readme_resp.json()
-            encoded = readme_json.get("content") or ""
-            readme_text = base64.b64decode(encoded).decode(
-                "utf-8", errors="replace"
-            )[:4000]
-
-        issue_detail = None
-        if issue_number is not None:
-            issue_resp = await client.get(
-                f"{base}/issues/{int(issue_number)}", headers=headers
-            )
-            if issue_resp.status_code == 200:
-                issue_detail = issue_resp.json()
-
-        issues_resp = await client.get(
-            f"{base}/issues",
-            headers=headers,
-            params={"state": "open", "per_page": 5},
+    chunks = retrieve_workspace_memory(supabase, ctx.workspace_id, query)
+    results = []
+    for chunk in chunks:
+        meta = chunk.get("metadata") or {}
+        results.append(
+            {
+                "content": chunk.get("content"),
+                "channel": meta.get("channel_slug") or meta.get("channel_name"),
+                "sender": meta.get("sender_name"),
+                "created_at": meta.get("created_at"),
+                "similarity": chunk.get("similarity"),
+            }
         )
-        open_issues = []
-        if issues_resp.status_code == 200:
-            for item in issues_resp.json():
-                if "pull_request" in item:
-                    continue
-                open_issues.append(
-                    {
-                        "number": item.get("number"),
-                        "title": item.get("title"),
-                        "state": item.get("state"),
-                    }
-                )
-
-    return {
-        "repo": {
-            "full_name": repo_data.get("full_name"),
-            "description": repo_data.get("description"),
-            "stars": repo_data.get("stargazers_count"),
-            "default_branch": repo_data.get("default_branch"),
-            "url": repo_data.get("html_url"),
-        },
-        "readme_excerpt": readme_text,
-        "open_issues": open_issues,
-        "issue": issue_detail,
-    }
+    return {"results": results, "count": len(results)}
 
 
 TOOL_REGISTRY: dict[str, callable] = {
     "web_search": web_search,
     "github_read": github_read,
+    "github_post_comment": github_post_comment,
+    "github_create_pr": github_create_pr,
+    "workspace_search": workspace_search,
 }
 
 

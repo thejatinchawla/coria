@@ -245,7 +245,27 @@ function ApprovalRequestedStep({
 }: {
   step: Extract<TraceStep, { type: "approval_requested" }>
 }) {
-  return <PlaceholderStep label={step.type} timestamp={step.timestamp} />
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="text-xs font-medium text-amber-700 dark:text-amber-400">
+          Approval requested
+          {step.tool ? (
+            <>
+              {" "}
+              · <span className="font-mono">{step.tool}</span>
+            </>
+          ) : null}
+        </span>
+        <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground/70">
+          {formatStepTime(step.timestamp)}
+        </span>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        Action block {step.action_block_id.slice(0, 8)}…
+      </p>
+    </div>
+  )
 }
 
 function ApprovalDecisionStep({
@@ -253,23 +273,21 @@ function ApprovalDecisionStep({
 }: {
   step: Extract<TraceStep, { type: "approval_decision" }>
 }) {
-  return <PlaceholderStep label={step.type} timestamp={step.timestamp} />
-}
-
-function PlaceholderStep({
-  label,
-  timestamp,
-}: {
-  label: string
-  timestamp: string
-}) {
+  const approved = step.decision === "approved"
   return (
     <div className="flex items-baseline justify-between gap-2">
-      <span className="font-mono text-xs italic text-muted-foreground">
-        {label}
+      <span
+        className={cn(
+          "text-xs font-medium capitalize",
+          approved
+            ? "text-green-700 dark:text-green-400"
+            : "text-red-700 dark:text-red-400",
+        )}
+      >
+        {step.decision}
       </span>
       <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground/70">
-        {formatStepTime(timestamp)}
+        {formatStepTime(step.timestamp)}
       </span>
     </div>
   )

@@ -3,12 +3,15 @@ import type { Metadata } from "next"
 import { createClient } from "@/lib/supabase-server"
 import { displayName } from "@/lib/user"
 import {
-  ARIA_AGENT_ID_FALLBACK,
+  DIVV_AGENT_ID_FALLBACK,
   ensureDemoMember,
-  fetchAriaAgentId,
+  fetchAgents,
   fetchChannelBySlug,
   fetchChannels,
+  fetchDefaultAgentId,
+  fetchMemberId,
   fetchWorkspace,
+  fetchWorkspaceSettings,
 } from "@/lib/workspace"
 import { Chat } from "@/components/Chat"
 import { SetupError } from "@/components/SetupError"
@@ -83,15 +86,20 @@ export default async function Home({ searchParams }: PageProps) {
     )
   }
 
-  const [channels, agentId] = await Promise.all([
-    fetchChannels(supabase, workspace.id),
-    fetchAriaAgentId(supabase, workspace.id),
-  ])
+  const [channels, agentId, memberId, agents, workspaceSettings] =
+    await Promise.all([
+      fetchChannels(supabase, workspace.id),
+      fetchDefaultAgentId(supabase, workspace.id),
+      fetchMemberId(supabase, workspace.id, user.id),
+      fetchAgents(supabase, workspace.id),
+      fetchWorkspaceSettings(supabase, workspace.id),
+    ])
 
   const { data: messages } = await supabase
     .from("messages")
     .select("*")
     .eq("channel_id", channel.id)
+    .is("thread_id", null)
     .order("created_at", { ascending: true })
 
   return (
@@ -99,7 +107,11 @@ export default async function Home({ searchParams }: PageProps) {
       workspace={workspace}
       channel={channel}
       channels={channels}
-      agentId={agentId ?? ARIA_AGENT_ID_FALLBACK}
+      agentId={agentId ?? DIVV_AGENT_ID_FALLBACK}
+      agents={agents}
+      workspaceSettings={workspaceSettings}
+      memberId={memberId}
+      workspaceId={workspace.id}
       initialMessages={(messages ?? []) as Message[]}
       userEmail={user.email ?? ""}
       userDisplayName={userDisplayName}

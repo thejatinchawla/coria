@@ -11,7 +11,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
-  let body: { user_message?: string; channel_id?: string; agent_id?: string }
+  let body: {
+    user_message?: string
+    channel_id?: string
+    agent_id?: string
+    invoker_member_id?: string | null
+    thread_id?: string | null
+  }
   try {
     body = await request.json()
   } catch {
@@ -50,6 +56,8 @@ export async function POST(request: Request) {
         user_message: userMessage,
         channel_id: channelId,
         agent_id: agentId,
+        invoker_member_id: body.invoker_member_id ?? null,
+        thread_id: body.thread_id ?? null,
       }),
     })
 

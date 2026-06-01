@@ -2,7 +2,7 @@
 
 export type SenderType = "human" | "agent"
 
-export type MemberRole = "owner" | "member"
+export type MemberRole = "owner" | "admin" | "member"
 export type ChannelType = "hybrid" | "human_only"
 export type AgentStatus = "active" | "paused"
 
@@ -28,6 +28,86 @@ export type Agent = {
   name: string
   mention_slug: string
   status: AgentStatus
+  system_prompt?: string
+  allowed_tools?: string[]
+  avatar_url?: string | null
+  color?: string
+  use_workspace_memory?: boolean
+  template_id?: string | null
+  model?: string | null
+  created_at?: string
+}
+
+export type WorkspaceSettings = {
+  workspace_id: string
+  agents_globally_paused: boolean
+  monthly_tool_budget: number
+  tool_budget_used: number
+  approval_ttl_hours?: number
+  default_agent_id: string | null
+  workspace_memory_enabled?: boolean
+  updated_at?: string
+}
+
+export type Member = {
+  id: string
+  workspace_id: string
+  user_id: string
+  display_name: string
+  role: MemberRole
+  avatar_url?: string | null
+  bio?: string | null
+  email?: string | null
+  created_at: string
+}
+
+export type PendingInvite = {
+  id: string
+  workspace_id: string
+  email: string
+  role: MemberRole
+  invited_by: string | null
+  expires_at: string
+  created_at: string
+}
+
+export type AuditLogEntry = {
+  id: string
+  workspace_id: string
+  agent_id: string | null
+  member_id: string | null
+  action_block_id: string | null
+  tool_name: string
+  tool_input_hash: string
+  outcome: string
+  gate_failed: string | null
+  metadata: Record<string, unknown>
+  created_at: string
+}
+
+export type ActionBlockStatus =
+  | "pending"
+  | "approved"
+  | "declined"
+  | "expired"
+  | "executed"
+  | "failed"
+
+export type ActionBlock = {
+  id: string
+  workspace_id: string
+  channel_id: string
+  agent_id: string
+  trace_id: string | null
+  tool_name: string
+  tool_input: Record<string, unknown>
+  summary: string
+  status: ActionBlockStatus
+  requested_by: string | null
+  decided_by: string | null
+  expires_at: string
+  created_at: string
+  decided_at: string | null
 }
 
 export type Message = {
@@ -39,6 +119,44 @@ export type Message = {
   content: string
   reasoning_trace_id: string | null
   action_block_id: string | null
+  thread_id: string | null
+  parent_message_id: string | null
+  reply_count: number
+  is_pinned?: boolean
+  created_at: string
+}
+
+export type MessageSearchHit = {
+  id: string
+  channel_id: string
+  content: string
+  sender_name: string
+  sender_type: string
+  thread_id: string | null
+  created_at: string
+}
+
+export type IntegrationStatus = "active" | "error" | "disconnected"
+
+export type Integration = {
+  id: string
+  workspace_id: string
+  provider: string
+  status: IntegrationStatus
+  created_at: string
+}
+
+export type AgentTriggerType = "cron" | "keyword"
+
+export type AgentTrigger = {
+  id: string
+  workspace_id: string
+  agent_id: string
+  channel_id: string
+  type: AgentTriggerType
+  config: Record<string, unknown>
+  enabled: boolean
+  last_run_at: string | null
   created_at: string
 }
 

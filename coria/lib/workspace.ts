@@ -1,10 +1,13 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
-import type { Channel, Workspace } from "@/types"
+import type { Agent, Channel, Member, Workspace, WorkspaceSettings } from "@/types"
 
 export const DEMO_WORKSPACE_SLUG = "coria-demo"
 
-/** Fallback if agents row not readable yet */
-export const ARIA_AGENT_ID_FALLBACK = "00000000-0000-4000-8000-000000000003"
+/** Fallback if default agent row not readable yet (Divv) */
+export const DIVV_AGENT_ID_FALLBACK = "00000000-0000-4000-8000-000000000003"
+
+/** @deprecated use DIVV_AGENT_ID_FALLBACK */
+export const ARIA_AGENT_ID_FALLBACK = DIVV_AGENT_ID_FALLBACK
 
 export async function fetchWorkspace(
   supabase: SupabaseClient,
@@ -35,6 +38,14 @@ export async function ensureDemoMember(
       error:
         "Demo workspace not found. Run backend/supabase migration (supabase db push).",
     }
+  }
+
+  try {
+    await supabase.rpc("accept_workspace_invite", {
+      p_display_name: displayName,
+    })
+  } catch {
+    /* no pending invite — continue */
   }
 
   const { data: existing, error: selectError } = await supabase
@@ -103,6 +114,68 @@ export async function fetchChannelBySlug(
   return (data as Channel | null) ?? null
 }
 
+export async function fetchMemberId(
+  supabase: SupabaseClient,
+  workspaceId: string,
+  userId: string,
+): Promise<string | null> {
+  const { data, error } = await supabase
+    .from("members")
+    .select("id")
+    .eq("workspace_id", workspaceId)
+    .eq("user_id", userId)
+    .maybeSingle()
+
+  if (error) {
+    console.error("[workspace] fetchMemberId:", error.message)
+    return null
+  }
+
+  return data?.id ?? null
+}
+
+export async function fetchMember(
+  supabase: SupabaseClient,
+  workspaceId: string,
+  userId: string,
+): Promise<Member | null> {
+  const { data, error } = await supabase
+    .from("members")
+    .select(
+      "id,workspace_id,user_id,display_name,role,avatar_url,bio,created_at",
+    )
+    .eq("workspace_id", workspaceId)
+    .eq("user_id", userId)
+    .maybeSingle()
+
+  if (error) {
+    console.error("[workspace] fetchMember:", error.message)
+    return null
+  }
+
+  return (data as Member | null) ?? null
+}
+
+export async function fetchAgentBySlug(
+  supabase: SupabaseClient,
+  workspaceId: string,
+  mentionSlug: string,
+): Promise<string | null> {
+  const { data, error } = await supabase
+    .from("agents")
+    .select("id")
+    .eq("workspace_id", workspaceId)
+    .eq("mention_slug", mentionSlug.toLowerCase())
+    .maybeSingle()
+
+  if (error) {
+    console.error("[workspace] fetchAgentBySlug:", error.message)
+    return null
+  }
+
+  return data?.id ?? null
+}
+
 export async function fetchAriaAgentId(
   supabase: SupabaseClient,
   workspaceId: string,
@@ -120,6 +193,95 @@ export async function fetchAriaAgentId(
   }
 
   return data?.id ?? null
+}
+
+export async function fetchDefaultAgentId(
+  supabase: SupabaseClient,
+  workspaceId: string,
+): Promise<string | null> {
+  const { data: settings, error: settingsError } = await supabase
+    .from("workspace_settings")
+    .select("default_agent_id")
+    .eq("workspace_id", workspaceId)
+    .maybeSingle()
+
+  if (settingsError) {
+    console.error("[workspace] fetchDefaultAgentId settings:", settingsError.message)
+  } else if (settings?.default_agent_id) {
+    return settings.default_agent_id
+  }
+
+  const { data, error } = await supabase
+    .from("agents")
+    .select("id")
+    .eq("workspace_id", workspaceId)
+    .eq("mention_slug", "divv")
+    .maybeSingle()
+
+  if (error) {
+    console.error("[workspace] fetchDefaultAgentId divv:", error.message)
+    return null
+  }
+
+  return data?.id ?? null
+}
+
+export async function fetchAgents(
+  supabase: SupabaseClient,
+  workspaceId: string,
+): Promise<Agent[]> {
+  const { data, error } = await supabase
+    .from("agents")
+    .select(
+      "id,workspace_id,name,mention_slug,status,system_prompt,avatar_url,color,allowed_tools,template_id,use_workspace_memory,created_at",
+    )
+    .eq("workspace_id", workspaceId)
+    .order("created_at", { ascending: true })
+
+  if (error) {
+    console.error("[workspace] fetchAgents:", error.message)
+    return []
+  }
+
+  return (data as Agent[] | null) ?? []
+}
+
+export async function fetchWorkspaceSettings(
+  supabase: SupabaseClient,
+  workspaceId: string,
+): Promise<WorkspaceSettings | null> {
+  const { data, error } = await supabase
+    .from("workspace_settings")
+    .select(
+      "workspace_id,agents_globally_paused,monthly_tool_budget,tool_budget_used,approval_ttl_hours,default_agent_id,workspace_memory_enabled,updated_at",
+    )
+    .eq("workspace_id", workspaceId)
+    .maybeSingle()
+
+  if (error) {
+    console.error("[workspace] fetchWorkspaceSettings:", error.message)
+    return null
+  }
+
+  return (data as WorkspaceSettings | null) ?? null
+}
+
+export async function fetchPendingApprovalCount(
+  supabase: SupabaseClient,
+  workspaceId: string,
+): Promise<number> {
+  const { count, error } = await supabase
+    .from("action_blocks")
+    .select("id", { count: "exact", head: true })
+    .eq("workspace_id", workspaceId)
+    .eq("status", "pending")
+
+  if (error) {
+    console.error("[workspace] fetchPendingApprovalCount:", error.message)
+    return 0
+  }
+
+  return count ?? 0
 }
 
 export function slugifyChannelName(name: string): string {

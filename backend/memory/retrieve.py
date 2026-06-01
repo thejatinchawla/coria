@@ -8,8 +8,12 @@ from typing import Any
 from memory.embed import embed_texts
 
 RAG_TOP_K = int(os.getenv("RAG_TOP_K", "8"))
+RAG_WORKSPACE_TOP_K = int(os.getenv("RAG_WORKSPACE_TOP_K", "6"))
 RAG_MAX_CONTEXT_TOKENS = int(os.getenv("RAG_MAX_CONTEXT_TOKENS", "4000"))
 RAG_MIN_SIMILARITY = float(os.getenv("RAG_MIN_SIMILARITY", "0.7"))
+RAG_WORKSPACE_MIN_SIMILARITY = float(
+    os.getenv("RAG_WORKSPACE_MIN_SIMILARITY", "0.65")
+)
 
 
 def estimate_tokens(text: str) -> int:
@@ -106,6 +110,61 @@ def retrieve_channel_memory(
     trimmed = trim_to_token_budget(ranked, max_tokens)
     print(
         f"[memory] retrieve channel={channel_id} "
+        f"hits={len(chunks)} used={len(trimmed)}",
+        flush=True,
+    )
+    return trimmed
+
+
+def retrieve_workspace_memory(
+    supabase,
+    workspace_id: str,
+    query: str,
+    *,
+    top_k: int = RAG_WORKSPACE_TOP_K,
+    min_similarity: float = RAG_WORKSPACE_MIN_SIMILARITY,
+    max_tokens: int = RAG_MAX_CONTEXT_TOKENS,
+) -> list[dict[str, Any]]:
+    """Cross-channel workspace memory (memory_tier = workspace)."""
+    text = query.strip()
+    if not text:
+        return []
+
+    try:
+        query_embedding = embed_texts([text])[0]
+    except Exception as e:
+        print(f"[memory] workspace query embed failed: {e}", flush=True)
+        traceback.print_exc()
+        return []
+
+    try:
+        result = supabase.rpc(
+            "match_workspace_memory",
+            {
+                "p_workspace_id": workspace_id,
+                "p_query_embedding": query_embedding,
+                "p_match_count": top_k,
+                "p_min_similarity": min_similarity,
+            },
+        ).execute()
+    except Exception as e:
+        print(f"[memory] workspace retrieve RPC failed: {e}", flush=True)
+        traceback.print_exc()
+        return []
+
+    chunks = result.data or []
+    if not chunks:
+        print(
+            f"[memory] workspace retrieve workspace={workspace_id} hits=0 "
+            f"(min_sim={min_similarity})",
+            flush=True,
+        )
+        return []
+
+    ranked = rerank_with_recency(chunks)
+    trimmed = trim_to_token_budget(ranked, max_tokens)
+    print(
+        f"[memory] workspace retrieve workspace={workspace_id} "
         f"hits={len(chunks)} used={len(trimmed)}",
         flush=True,
     )
