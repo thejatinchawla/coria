@@ -24,24 +24,32 @@ export function JoinWorkspace() {
   useEffect(() => {
     void (async () => {
       const supabase = createClient()
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
 
-      if (!user) {
-        router.replace("/login?error=auth")
-        return
+      // Session may still be hydrating right after /auth/callback redirect.
+      for (let attempt = 0; attempt < 5; attempt++) {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser()
+
+        if (user) {
+          setEmail(user.email ?? null)
+
+          if (!fromInvite) {
+            router.replace("/onboarding")
+            return
+          }
+
+          setNeedsPassword(true)
+          setLoading(false)
+          return
+        }
+
+        if (attempt < 4) {
+          await new Promise((resolve) => setTimeout(resolve, 200))
+        }
       }
 
-      setEmail(user.email ?? null)
-
-      if (!fromInvite) {
-        router.replace("/onboarding")
-        return
-      }
-
-      setNeedsPassword(true)
-      setLoading(false)
+      router.replace("/login?error=auth")
     })()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fromInvite, router])
