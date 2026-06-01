@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
+import type { User } from "@supabase/supabase-js"
 import { createClient } from "@/lib/supabase"
 import { displayName } from "@/lib/user"
 import { Button } from "@/components/ui/button"
@@ -47,7 +48,7 @@ export function JoinWorkspace() {
 
   async function finishJoin(
     supabase: ReturnType<typeof createClient>,
-    user: { id: string; email?: string | null; user_metadata?: Record<string, unknown> },
+    user: User,
   ) {
     const name = displayName(user)
 
