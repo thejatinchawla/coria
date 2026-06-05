@@ -27,9 +27,12 @@ export function LoginForm({ authError }: { authError?: boolean }) {
     void createClient()
       .auth.getSession()
       .then(({ data: { session } }) => {
-        if (session?.user) {
-          router.replace("/?channel=general")
+        if (!session?.user) return
+        if (session.user.invited_at) {
+          router.replace("/auth/join?from=invite")
+          return
         }
+        router.replace("/?channel=general")
       })
   }, [router])
 

@@ -219,7 +219,7 @@ def invite_member(
 
     expires_at = (_utcnow() + timedelta(days=INVITE_TTL_DAYS)).isoformat()
     app_url = os.getenv("APP_URL", "http://localhost:3000").rstrip("/")
-    redirect_to = f"{app_url}/auth/confirm?next=/auth/join"
+    redirect_to = f"{app_url}/auth/callback?next=/auth/join"
 
     _send_invite_email(
         supabase,

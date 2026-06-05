@@ -46,7 +46,7 @@ export async function proxy(request: NextRequest) {
       !pathname.startsWith("/auth/callback")
     ) {
       const url = request.nextUrl.clone()
-      url.pathname = "/auth/confirm"
+      url.pathname = "/auth/callback"
       if (!url.searchParams.has("next")) {
         url.searchParams.set("next", "/auth/join")
       }
