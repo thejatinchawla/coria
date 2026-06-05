@@ -54,6 +54,9 @@ export default async function Home({ searchParams }: PageProps) {
   const activeWorkspaceId = await getActiveWorkspaceIdFromCookie()
 
   if (workspaces.length === 0) {
+    if (user.invited_at) {
+      redirect("/auth/join?from=invite")
+    }
     redirect("/onboarding")
   }
 

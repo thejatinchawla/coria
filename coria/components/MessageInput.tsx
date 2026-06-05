@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { Send } from "lucide-react"
 import { createClient } from "@/lib/supabase"
 import { streamInvoke } from "@/lib/stream-invoke"
@@ -80,6 +80,8 @@ export function MessageInput({
   const [sending, setSending] = useState(false)
   const [hintIndex, setHintIndex] = useState(0)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const formRef = useRef<HTMLFormElement>(null)
+  const refocusAfterSendRef = useRef(false)
 
   const hintAgents = useMemo(() => matchingAgents(text, agents), [text, agents])
   const placeholder = useMemo(
@@ -88,6 +90,23 @@ export function MessageInput({
   )
   const showAgentHint = hintAgents.length > 0
   const canSend = text.trim().length > 0 && !sending && !agentsGloballyPaused
+
+  useEffect(() => {
+    if (sending || !refocusAfterSendRef.current) return
+    refocusAfterSendRef.current = false
+    const textarea = textareaRef.current
+    if (!textarea) return
+    requestAnimationFrame(() => {
+      textarea.focus({ preventScroll: true })
+      formRef.current?.scrollIntoView({ block: "end", behavior: "instant" })
+    })
+  }, [sending])
+
+  function keepComposerVisible() {
+    requestAnimationFrame(() => {
+      formRef.current?.scrollIntoView({ block: "end", behavior: "instant" })
+    })
+  }
 
   async function send() {
     const content = text.trim()
@@ -193,11 +212,11 @@ export function MessageInput({
       }
     }
 
-    setSending(false)
     setText("")
     setHintIndex(0)
     if (textareaRef.current) textareaRef.current.style.height = "auto"
-    textareaRef.current?.focus()
+    refocusAfterSendRef.current = true
+    setSending(false)
   }
 
   function completeMention(slug: string) {
@@ -247,14 +266,15 @@ export function MessageInput({
 
   return (
     <form
+      ref={formRef}
       onSubmit={(e) => {
         e.preventDefault()
         void send()
       }}
       className={
         compact
-          ? "shrink-0"
-          : "shrink-0 border-t px-3 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-6 sm:py-4"
+          ? "shrink-0 bg-background"
+          : "shrink-0 border-t bg-background px-3 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-6 sm:py-4"
       }
     >
       <div className={compact ? "" : "relative mx-auto max-w-3xl"}>
@@ -301,7 +321,9 @@ export function MessageInput({
             value={text}
             onChange={handleChange}
             onKeyDown={handleKeyDown}
+            onFocus={keepComposerVisible}
             rows={1}
+            enterKeyHint="send"
             placeholder={
               agentsGloballyPaused
                 ? "All agents are paused"
@@ -309,10 +331,11 @@ export function MessageInput({
                   ? "Reply in thread…"
                   : placeholder
             }
-            disabled={sending || agentsGloballyPaused}
+            disabled={agentsGloballyPaused}
+            aria-busy={sending}
             aria-autocomplete="list"
             aria-controls={showAgentHint ? "agent-mention-hint" : undefined}
-            className="flex min-h-9 flex-1 resize-none rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50"
+            className="flex min-h-9 flex-1 resize-none rounded-md border border-input bg-transparent px-3 py-2 text-base shadow-xs outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 sm:min-h-8 sm:py-1.5 sm:text-sm"
           />
           <Button
             type="submit"
@@ -320,6 +343,7 @@ export function MessageInput({
             disabled={!canSend}
             aria-label="Send message"
             className="size-9 shrink-0"
+            onPointerDown={(e) => e.preventDefault()}
           >
             <Send className="size-4" />
           </Button>

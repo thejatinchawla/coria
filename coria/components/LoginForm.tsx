@@ -3,7 +3,11 @@
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase"
-import { urlHasAuthCredentials } from "@/lib/auth-confirm"
+import {
+  postAuthPath,
+  urlHasAuthCredentials,
+  userHasWorkspaceMembership,
+} from "@/lib/auth-confirm"
 import { LoadingButton } from "@/components/ui/loading-button"
 
 export function LoginForm({ authError }: { authError?: boolean }) {
@@ -28,16 +32,19 @@ export function LoginForm({ authError }: { authError?: boolean }) {
 
     if (urlHasAuthCredentials(search, hash)) return
 
-    void createClient()
-      .auth.getSession()
-      .then(({ data: { session } }) => {
-        if (!session?.user) return
-        if (session.user.invited_at) {
-          router.replace("/auth/join?from=invite")
-          return
-        }
-        router.replace("/?channel=general")
-      })
+    void (async () => {
+      const supabase = createClient()
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
+      if (!session?.user) return
+
+      const hasMembership = await userHasWorkspaceMembership(
+        supabase,
+        session.user.id,
+      )
+      router.replace(postAuthPath(session.user, hasMembership))
+    })()
   }, [router])
 
   async function handleSubmit(e: React.FormEvent) {

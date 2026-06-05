@@ -84,6 +84,32 @@ export async function completeAuthFromUrl(
   return { ok: false, error: "No auth credentials in URL" }
 }
 
+export async function userHasWorkspaceMembership(
+  supabase: SupabaseClient,
+  userId: string,
+): Promise<boolean> {
+  const { data, error } = await supabase
+    .from("members")
+    .select("id")
+    .eq("user_id", userId)
+    .limit(1)
+    .maybeSingle()
+
+  if (error) {
+    console.error("[auth] membership check:", error.message)
+    return false
+  }
+
+  return !!data
+}
+
+/** Where to send a signed-in user. invited_at alone is not enough — it never clears. */
+export function postAuthPath(user: User, hasMembership: boolean): string {
+  if (hasMembership) return "/?channel=general"
+  if (user.invited_at) return "/auth/join?from=invite"
+  return "/onboarding"
+}
+
 export async function waitForAuthUser(
   supabase: SupabaseClient,
   attempts = 10,

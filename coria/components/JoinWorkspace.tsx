@@ -27,14 +27,60 @@ export function JoinWorkspace() {
     const settledRef = { current: false }
     const supabase = createClient()
 
-    function showInvitePassword(user: User) {
+    async function goToWorkspace(workspaceId: string) {
+      await fetch("/api/workspaces/active", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workspace_id: workspaceId }),
+      })
+      router.replace("/?channel=general")
+    }
+
+    async function resolveInviteUser(user: User) {
       if (ignore || settledRef.current) return
-      settledRef.current = true
-      setEmail(user.email ?? null)
+
+      const { data: member, error: memberError } = await supabase
+        .from("members")
+        .select("id, workspace_id")
+        .eq("user_id", user.id)
+        .limit(1)
+        .maybeSingle()
+
+      if (memberError) {
+        if (!ignore && !settledRef.current) {
+          settledRef.current = true
+          setLoading(false)
+          setError(memberError.message)
+        }
+        return
+      }
+
+      if (member) {
+        settledRef.current = true
+        await goToWorkspace(member.workspace_id)
+        return
+      }
+
       if (!fromInvite) {
+        settledRef.current = true
         router.replace("/onboarding")
         return
       }
+
+      const { data: workspaceId } = await supabase.rpc(
+        "accept_workspace_invite",
+        { p_display_name: displayName(user) },
+      )
+
+      if (workspaceId) {
+        settledRef.current = true
+        await goToWorkspace(workspaceId as string)
+        return
+      }
+
+      if (ignore || settledRef.current) return
+      settledRef.current = true
+      setEmail(user.email ?? null)
       setNeedsPassword(true)
       setLoading(false)
       setError(null)
@@ -44,14 +90,14 @@ export function JoinWorkspace() {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session?.user && fromInvite) {
-        showInvitePassword(session.user)
+        void resolveInviteUser(session.user)
       }
     })
 
     void ensureInviteSession(supabase).then((user) => {
       if (ignore) return
       if (user) {
-        showInvitePassword(user)
+        void resolveInviteUser(user)
         return
       }
       if (settledRef.current) return
@@ -110,6 +156,7 @@ export function JoinWorkspace() {
     })
 
     router.replace("/?channel=general")
+    return
   }
 
   async function handleSetPassword(e: React.FormEvent) {

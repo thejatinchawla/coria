@@ -3,7 +3,12 @@
 import { useEffect, useState } from "react"
 import { usePathname, useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase"
-import { completeAuthFromUrl, urlHasAuthCredentials } from "@/lib/auth-confirm"
+import {
+  completeAuthFromUrl,
+  postAuthPath,
+  urlHasAuthCredentials,
+  userHasWorkspaceMembership,
+} from "@/lib/auth-confirm"
 
 /**
  * Handles Supabase auth tokens in the URL hash/query on pages other than
@@ -28,9 +33,16 @@ export function AuthUrlHandler() {
       const result = await completeAuthFromUrl(supabase, search, hash)
 
       if (result.ok) {
-        // Always router.replace — replaceState alone updates the URL bar but
-        // leaves the wrong page mounted (e.g. login UI at /auth/join).
-        router.replace(result.destination)
+        const {
+          data: { user },
+        } = await supabase.auth.getUser()
+        const destination = user
+          ? postAuthPath(
+              user,
+              await userHasWorkspaceMembership(supabase, user.id),
+            )
+          : result.destination
+        router.replace(destination)
       } else {
         console.error("[AuthUrlHandler]", result.error)
       }
