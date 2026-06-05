@@ -30,6 +30,7 @@ import { ThreadView } from "@/components/ThreadView"
 import { useIsMobile } from "@/components/ThreadInline"
 import { useToast } from "@/components/Toast"
 import { useConfirm } from "@/components/ConfirmDialog"
+import { AgentFtue } from "@/components/AgentFtue"
 
 type StreamState = {
   content: string
@@ -91,6 +92,7 @@ export function Chat({
   )
   const [pinnedMessages, setPinnedMessages] = useState<Message[]>([])
   const [channelTab, setChannelTab] = useState<ChannelTab>("messages")
+  const [composerPrefill, setComposerPrefill] = useState<string | null>(null)
 
   const agentsById = useMemo(
     () => Object.fromEntries(agents.map((a) => [a.id, a])),
@@ -774,9 +776,17 @@ export function Chat({
               agentsGloballyPaused={agentsGloballyPaused}
               memberId={memberId}
               senderName={userDisplayName}
+              prefill={composerPrefill}
+              onPrefillApplied={() => setComposerPrefill(null)}
               {...makeStreamHandlers(null)}
               onActionBlock={handleActionBlock}
               onMessageSent={handleMessageSent}
+            />
+            <AgentFtue
+              agents={agents}
+              memberId={memberId}
+              workspaceId={workspaceId}
+              onTryExample={setComposerPrefill}
             />
             </>
           ) : (

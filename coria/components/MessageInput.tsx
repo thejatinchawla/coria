@@ -56,6 +56,8 @@ export function MessageInput({
   onStreamError,
   onActionBlock,
   onMessageSent,
+  prefill,
+  onPrefillApplied,
 }: {
   channelId: string
   channelSlug: string
@@ -74,6 +76,8 @@ export function MessageInput({
   onStreamError?: () => void
   onActionBlock?: (block: ActionBlock) => void
   onMessageSent?: (message: Message) => void
+  prefill?: string | null
+  onPrefillApplied?: () => void
 }) {
   const { toast } = useToast()
   const [text, setText] = useState("")
@@ -90,6 +94,19 @@ export function MessageInput({
   )
   const showAgentHint = hintAgents.length > 0
   const canSend = text.trim().length > 0 && !sending && !agentsGloballyPaused
+
+  useEffect(() => {
+    if (!prefill) return
+    setText(prefill)
+    onPrefillApplied?.()
+    requestAnimationFrame(() => {
+      const textarea = textareaRef.current
+      if (!textarea) return
+      textarea.focus()
+      textarea.style.height = "auto"
+      textarea.style.height = `${Math.min(textarea.scrollHeight, 160)}px`
+    })
+  }, [prefill, onPrefillApplied])
 
   useEffect(() => {
     if (sending || !refocusAfterSendRef.current) return

@@ -115,7 +115,7 @@ export function MessageList({
       ) {
         return
       }
-      threadProps.onCloseThread?.()
+      threadProps?.onCloseThread?.()
     }
 
     document.addEventListener("mousedown", onPointerDown)
