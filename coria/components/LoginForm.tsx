@@ -20,8 +20,12 @@ export function LoginForm({ authError }: { authError?: boolean }) {
   )
 
   useEffect(() => {
-    const search = window.location.search
-    const hash = window.location.hash
+    const { pathname, search, hash } = window.location
+    if (pathname !== "/login") {
+      router.replace(`${pathname}${search}${hash}`)
+      return
+    }
+
     if (urlHasAuthCredentials(search, hash)) return
 
     void createClient()

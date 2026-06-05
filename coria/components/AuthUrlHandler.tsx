@@ -28,13 +28,9 @@ export function AuthUrlHandler() {
       const result = await completeAuthFromUrl(supabase, search, hash)
 
       if (result.ok) {
-        window.history.replaceState(null, "", result.destination)
-        const onDestination =
-          `${window.location.pathname}${window.location.search}` ===
-          result.destination
-        if (!onDestination) {
-          router.replace(result.destination)
-        }
+        // Always router.replace — replaceState alone updates the URL bar but
+        // leaves the wrong page mounted (e.g. login UI at /auth/join).
+        router.replace(result.destination)
       } else {
         console.error("[AuthUrlHandler]", result.error)
       }
