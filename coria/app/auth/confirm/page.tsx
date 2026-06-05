@@ -4,9 +4,11 @@ import { Suspense, useEffect, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { createClient } from "@/lib/supabase"
 import {
+  authRedirectDestination,
   completeAuthFromUrl,
-  inviteJoinPath,
+  postAuthPath,
   urlHasAuthCredentials,
+  userHasWorkspaceMembership,
   waitForAuthUser,
 } from "@/lib/auth-confirm"
 import { Button } from "@/components/ui/button"
@@ -34,11 +36,19 @@ function AuthConfirmInner() {
 
       const user = await waitForAuthUser(supabase)
       if (user) {
-        router.replace(inviteJoinPath(searchParams.get("next")))
+        const hasMembership = await userHasWorkspaceMembership(supabase, user.id)
+        router.replace(
+          hasMembership
+            ? postAuthPath(user, true)
+            : authRedirectDestination(
+                searchParams.get("next"),
+                searchParams.get("type"),
+              ),
+        )
         return
       }
 
-      setError("Could not verify your invite link. Ask your admin to resend it.")
+      setError("Could not verify your sign-in link. Request a new one from the login page.")
     })()
   }, [router, searchParams])
 
@@ -55,7 +65,7 @@ function AuthConfirmInner() {
 
   return (
     <div className="flex min-h-dvh items-center justify-center text-sm text-muted-foreground">
-      Confirming invite…
+      Confirming sign-in…
     </div>
   )
 }
@@ -65,7 +75,7 @@ export default function AuthConfirmPage() {
     <Suspense
       fallback={
         <div className="flex min-h-dvh items-center justify-center text-sm text-muted-foreground">
-          Confirming invite…
+          Confirming sign-in…
         </div>
       }
     >

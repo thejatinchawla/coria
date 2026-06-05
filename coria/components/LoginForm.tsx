@@ -4,16 +4,19 @@ import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase"
 import {
+  buildAuthCallbackRedirect,
   postAuthPath,
   urlHasAuthCredentials,
   userHasWorkspaceMembership,
 } from "@/lib/auth-confirm"
 import { LoadingButton } from "@/components/ui/loading-button"
+import { Button } from "@/components/ui/button"
 
 export function LoginForm({ authError }: { authError?: boolean }) {
   const router = useRouter()
 
   const [mode, setMode] = useState<"signin" | "signup">("signin")
+  const [signInMethod, setSignInMethod] = useState<"password" | "link">("link")
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [loading, setLoading] = useState(false)
@@ -47,8 +50,42 @@ export function LoginForm({ authError }: { authError?: boolean }) {
     })()
   }, [router])
 
+  async function handleMagicLink() {
+    const trimmed = email.trim()
+    if (!trimmed) {
+      setMessage("Enter your email address.")
+      return
+    }
+
+    setLoading(true)
+    setMessage(null)
+
+    const supabase = createClient()
+    const { error } = await supabase.auth.signInWithOtp({
+      email: trimmed,
+      options: {
+        shouldCreateUser: false,
+        emailRedirectTo: buildAuthCallbackRedirect(),
+      },
+    })
+
+    setLoading(false)
+    if (error) {
+      setMessage(error.message)
+      return
+    }
+
+    setMessage(`We sent a sign-in link to ${trimmed}. Open it on this device to continue.`)
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+
+    if (mode === "signin" && signInMethod === "link") {
+      await handleMagicLink()
+      return
+    }
+
     setLoading(true)
     setMessage(null)
 
@@ -59,7 +96,7 @@ export function LoginForm({ authError }: { authError?: boolean }) {
         email,
         password,
         options: {
-          emailRedirectTo: `${window.location.origin}/auth/confirm?next=/onboarding`,
+          emailRedirectTo: buildAuthCallbackRedirect("/onboarding"),
         },
       })
       setLoading(false)
@@ -81,6 +118,8 @@ export function LoginForm({ authError }: { authError?: boolean }) {
     router.push("/")
   }
 
+  const showPassword = mode === "signup" || signInMethod === "password"
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4 py-8 pb-[max(2rem,env(safe-area-inset-bottom))]">
       <div className="w-full max-w-sm space-y-6">
@@ -91,7 +130,7 @@ export function LoginForm({ authError }: { authError?: boolean }) {
           </p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={(e) => void handleSubmit(e)} className="space-y-4">
           <div className="space-y-2">
             <label htmlFor="email" className="text-sm font-medium">
               Email
@@ -107,31 +146,54 @@ export function LoginForm({ authError }: { authError?: boolean }) {
             />
           </div>
 
-          <div className="space-y-2">
-            <label htmlFor="password" className="text-sm font-medium">
-              Password
-            </label>
-            <input
-              id="password"
-              type="password"
-              autoComplete={
-                mode === "signup" ? "new-password" : "current-password"
-              }
-              required
-              minLength={6}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
-            />
-          </div>
+          {showPassword && (
+            <div className="space-y-2">
+              <label htmlFor="password" className="text-sm font-medium">
+                Password
+              </label>
+              <input
+                id="password"
+                type="password"
+                autoComplete={
+                  mode === "signup" ? "new-password" : "current-password"
+                }
+                required
+                minLength={6}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+              />
+            </div>
+          )}
 
           {message && (
             <p className="text-sm text-muted-foreground">{message}</p>
           )}
 
           <LoadingButton type="submit" className="w-full" loading={loading}>
-            {mode === "signup" ? "Create account" : "Sign in"}
+            {mode === "signup"
+              ? "Create account"
+              : signInMethod === "link"
+                ? "Email me a sign-in link"
+                : "Sign in"}
           </LoadingButton>
+
+          {mode === "signin" && (
+            <Button
+              type="button"
+              variant="ghost"
+              className="w-full text-muted-foreground"
+              onClick={() => {
+                setSignInMethod(signInMethod === "link" ? "password" : "link")
+                setMessage(null)
+                setPassword("")
+              }}
+            >
+              {signInMethod === "link"
+                ? "Sign in with password instead"
+                : "Email me a sign-in link instead"}
+            </Button>
+          )}
         </form>
 
         <p className="text-center text-sm text-muted-foreground">
@@ -140,6 +202,7 @@ export function LoginForm({ authError }: { authError?: boolean }) {
             type="button"
             onClick={() => {
               setMode(mode === "signin" ? "signup" : "signin")
+              setSignInMethod("link")
               setMessage(null)
             }}
             className="font-medium text-foreground underline-offset-4 hover:underline"

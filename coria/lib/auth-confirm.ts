@@ -9,6 +9,8 @@ const OTP_TYPES = new Set([
   "email_change",
 ])
 
+export const DEFAULT_POST_LOGIN_PATH = "/?channel=general"
+
 export function inviteJoinPath(next: string | null | undefined) {
   if (next === "/auth/join" || next?.startsWith("/auth/join")) {
     return "/auth/join?from=invite"
@@ -17,13 +19,36 @@ export function inviteJoinPath(next: string | null | undefined) {
   return "/auth/join?from=invite"
 }
 
+/** Post-auth redirect for /auth/callback and client URL handlers. */
+export function authRedirectDestination(
+  next: string | null | undefined,
+  type?: string | null,
+) {
+  if (type === "invite") return "/auth/join?from=invite"
+  if (type === "signup") return "/onboarding"
+  if (next === "/auth/join" || next?.startsWith("/auth/join")) {
+    return "/auth/join?from=invite"
+  }
+  if (next?.startsWith("/")) return next
+  if (type === "magiclink" || type === "email") return DEFAULT_POST_LOGIN_PATH
+  return DEFAULT_POST_LOGIN_PATH
+}
+
+export function buildAuthCallbackRedirect(
+  next = DEFAULT_POST_LOGIN_PATH,
+  origin?: string,
+) {
+  const base =
+    origin ?? (typeof window !== "undefined" ? window.location.origin : "")
+  const path = `/auth/callback?next=${encodeURIComponent(next)}`
+  return base ? `${base}${path}` : path
+}
+
 function resolveDestination(search: string, hash: string) {
   const params = new URLSearchParams(search)
   const hashParams = new URLSearchParams(hash.replace(/^#/, ""))
   const type = params.get("type") ?? hashParams.get("type")
-  if (type === "invite") return "/auth/join?from=invite"
-  if (type === "signup") return "/onboarding"
-  return inviteJoinPath(params.get("next"))
+  return authRedirectDestination(params.get("next"), type)
 }
 
 export function urlHasAuthCredentials(search: string, hash: string) {

@@ -1,6 +1,6 @@
 import { createServerClient } from "@supabase/ssr"
 import { NextRequest, NextResponse } from "next/server"
-import { inviteJoinPath } from "@/lib/auth-confirm"
+import { authRedirectDestination } from "@/lib/auth-confirm"
 
 const AUTH_OTP_TYPES = new Set([
   "invite",
@@ -64,7 +64,7 @@ export async function GET(request: NextRequest) {
   const tokenHash = request.nextUrl.searchParams.get("token_hash")
   const type = request.nextUrl.searchParams.get("type")
   const next = request.nextUrl.searchParams.get("next")
-  const destination = inviteJoinPath(next)
+  const destination = authRedirectDestination(next, type)
 
   if (code) {
     const response = NextResponse.redirect(`${baseOrigin}${destination}`)
