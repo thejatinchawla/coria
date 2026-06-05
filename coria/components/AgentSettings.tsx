@@ -254,6 +254,7 @@ export function AgentSettings({
             >
               <AgentAvatar
                 name={agent.name}
+                mentionSlug={agent.mention_slug}
                 color={agent.color}
                 avatarUrl={agent.avatar_url}
                 size="sm"

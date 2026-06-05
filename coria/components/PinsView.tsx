@@ -49,6 +49,7 @@ export function PinsView({
                   {isAgent ? (
                     <AgentAvatar
                       name={agent?.name ?? message.sender_name}
+                      mentionSlug={agent?.mention_slug}
                       color={agent?.color}
                       avatarUrl={agent?.avatar_url}
                       size="sm"
