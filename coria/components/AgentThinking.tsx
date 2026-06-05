@@ -1,4 +1,5 @@
 import { AgentAvatar } from "@/components/AgentAvatar"
+import { AgentAiBadge } from "@/components/AgentAiBadge"
 
 export function AgentThinking({
   message = "Agent is thinking…",
@@ -29,6 +30,7 @@ export function AgentThinking({
             />
           ))}
         </div>
+        <AgentAiBadge />
         <span className="text-xs text-muted-foreground">{message}</span>
       </div>
     </div>

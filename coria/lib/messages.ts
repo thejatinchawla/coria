@@ -87,9 +87,8 @@ export async function setMessagePinned(
 export function canDeleteMessage(
   message: Message,
   memberId: string | null,
-  memberRole: MemberRole,
+  _memberRole: MemberRole,
 ): boolean {
-  if (memberRole === "owner" || memberRole === "admin") return true
   return (
     message.sender_type === "human" &&
     memberId !== null &&

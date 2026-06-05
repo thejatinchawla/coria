@@ -9,6 +9,11 @@ import { StreamingMessage } from "@/components/StreamingMessage"
 import { ThreadInline } from "@/components/ThreadInline"
 import { Button } from "@/components/ui/button"
 import type { ActionBlock } from "@/types"
+import {
+  isSameMessageGroup,
+  shouldShowMessageTimestamp,
+} from "@/lib/message-time"
+import { cn } from "@/lib/utils"
 
 const SCROLL_THRESHOLD_PX = 80
 
@@ -65,6 +70,7 @@ export function MessageList({
     pinLimitReached?: boolean
     onDelete?: (message: MessageType) => void
     canDelete?: (message: MessageType) => boolean
+    onCloseThread?: () => void
   }
 }) {
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -74,6 +80,7 @@ export function MessageList({
     messages.at(-1)?.id,
   )
   const [atBottom, setAtBottom] = useState(true)
+  const activeThreadRef = useRef<HTMLDivElement>(null)
 
   const checkAtBottom = useCallback(() => {
     const el = scrollRef.current
@@ -94,6 +101,26 @@ export function MessageList({
     checkAtBottom()
     return () => el.removeEventListener("scroll", checkAtBottom)
   }, [checkAtBottom, messages.length])
+
+  useEffect(() => {
+    if (!expandedThreadId || !threadProps?.onCloseThread) return
+
+    function onPointerDown(event: MouseEvent) {
+      const target = event.target
+      if (!(target instanceof Node)) return
+      if (activeThreadRef.current?.contains(target)) return
+      if (
+        target instanceof Element &&
+        target.closest("[data-message-actions-menu]")
+      ) {
+        return
+      }
+      threadProps.onCloseThread?.()
+    }
+
+    document.addEventListener("mousedown", onPointerDown)
+    return () => document.removeEventListener("mousedown", onPointerDown)
+  }, [expandedThreadId, threadProps?.onCloseThread])
 
   useEffect(() => {
     const lastId = messages.at(-1)?.id
@@ -125,11 +152,31 @@ export function MessageList({
   return (
     <div className="relative min-h-0 flex-1">
       <div ref={scrollRef} className="h-full overflow-y-auto">
-        <div className="mx-auto flex max-w-3xl flex-col gap-4 px-3 py-4 sm:gap-6 sm:px-6 sm:py-6">
-        {messages.map((message) => (
-          <div key={message.id} className="flex flex-col gap-0">
+        <div className="mx-auto flex max-w-3xl flex-col px-3 py-4 sm:px-6 sm:py-6">
+        {messages.map((message, index) => {
+          const previous = messages[index - 1]
+          const next = messages[index + 1]
+          const groupedWithPrevious =
+            previous != null && isSameMessageGroup(previous, message)
+          const groupedWithNext =
+            next != null && isSameMessageGroup(message, next)
+
+          const isThreadOpen = expandedThreadId === message.id
+
+          return (
+          <div
+            key={message.id}
+            ref={isThreadOpen ? activeThreadRef : undefined}
+            className={cn(
+              "flex flex-col gap-0",
+              index > 0 && (groupedWithPrevious ? "mt-0.5" : "mt-4 sm:mt-5"),
+            )}
+          >
             <Message
               message={message}
+              showTimestamp={shouldShowMessageTimestamp(messages, index)}
+              groupedWithPrevious={groupedWithPrevious}
+              groupedWithNext={groupedWithNext}
               agent={
                 message.sender_id && agentsById
                   ? agentsById[message.sender_id]
@@ -159,7 +206,7 @@ export function MessageList({
               }
               currentMemberId={currentMemberId ?? threadProps?.memberId ?? null}
             />
-            {expandedThreadId === message.id &&
+            {isThreadOpen &&
               threadProps &&
               threadReplies && (
                 <div className="hidden md:block">
@@ -181,7 +228,8 @@ export function MessageList({
                 </div>
               )}
           </div>
-        ))}
+          )
+        })}
         {streamState &&
           !activeStreamThreadId &&
           (streamState.content ? (

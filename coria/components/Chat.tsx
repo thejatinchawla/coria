@@ -628,6 +628,7 @@ export function Chat({
     onDelete: handleDeleteMessage,
     canDelete: messageCanDelete,
     pinLimitReached,
+    onCloseThread: () => setExpandedThreadId(null),
     ...makeStreamHandlers(expandedThreadId),
   }
 
