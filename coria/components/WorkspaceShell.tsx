@@ -9,14 +9,10 @@ import {
   useRef,
   useState,
 } from "react"
-import { usePathname, useRouter } from "next/navigation"
+import { useRouter } from "next/navigation"
 import { AppShell } from "@/components/AppShell"
 import type { WorkspaceShellContext } from "@/lib/app-context"
-import {
-  readStoredChannelSlug,
-  readUrlChannelSlug,
-  writeStoredChannelSlug,
-} from "@/lib/channel-slug"
+import { writeStoredChannelSlug } from "@/lib/channel-slug"
 import { chatUrl } from "@/lib/settings-url"
 import type { Agent, Channel, Member, MemberRole } from "@/types"
 
@@ -52,12 +48,13 @@ export function useWorkspaceShell() {
 
 export function WorkspaceShell({
   initial,
+  initialChannelSlug,
   children,
 }: {
   initial: WorkspaceShellContext
+  initialChannelSlug: string
   children: React.ReactNode
 }) {
-  const pathname = usePathname()
   const router = useRouter()
   const chatBridgeRef = useRef<ChatBridge | null>(null)
   const [workspace, setWorkspace] = useState(initial.workspace)
@@ -73,20 +70,16 @@ export function WorkspaceShell({
   const [switchingChannelId, setSwitchingChannelId] = useState<string | null>(
     null,
   )
-  const [lastChannelSlug, setLastChannelSlug] = useState(readStoredChannelSlug)
-  const [channelRevision, setChannelRevision] = useState(0)
+  const [activeChannelSlug, setActiveChannelSlugState] =
+    useState(initialChannelSlug)
 
-  const isChatRoute = pathname === "/"
-  const activeChannelSlug = useMemo(() => {
-    if (!isChatRoute) return lastChannelSlug
-    void channelRevision
-    return readUrlChannelSlug()
-  }, [channelRevision, isChatRoute, lastChannelSlug])
+  useEffect(() => {
+    setActiveChannelSlugState(initialChannelSlug)
+  }, [initialChannelSlug])
 
   const setActiveChannelSlug = useCallback((slug: string) => {
     writeStoredChannelSlug(slug)
-    setLastChannelSlug(slug)
-    setChannelRevision((value) => value + 1)
+    setActiveChannelSlugState(slug)
   }, [])
 
   const registerChatBridge = useCallback((bridge: ChatBridge | null) => {

@@ -11,8 +11,10 @@ from groq import APIError, AsyncGroq, BadRequestError
 
 from agent import (
     MAX_AGENT_ITERATIONS,
+    _parse_groq_malformed_tool_from_text,
     _parse_groq_tool_use_failed,
     _run_groq_tool,
+    _strip_groq_malformed_tool_syntax,
     agent_system_prompt,
     build_system_prompt,
     now_iso,
@@ -124,6 +126,7 @@ async def run_groq_loop_streaming(
                     continue
                 raise
             name, args = recovered
+            content_buf.clear()
             yield {"type": "status", "message": f"Using {name}…"}
             try:
                 await _run_groq_tool(
@@ -183,6 +186,7 @@ async def run_groq_loop_streaming(
                     continue
                 raise
             name, args = recovered
+            content_buf.clear()
             yield {"type": "status", "message": f"Using {name}…"}
             try:
                 await _run_groq_tool(
@@ -204,6 +208,34 @@ async def run_groq_loop_streaming(
                 }
                 return
             continue
+
+        combined = "".join(content_buf)
+
+        if not tool_calls_acc and active_tools:
+            inline_tool = _parse_groq_malformed_tool_from_text(combined)
+            if inline_tool:
+                name, args = inline_tool
+                yield {"type": "status", "message": f"Using {name}…"}
+                try:
+                    await _run_groq_tool(
+                        name,
+                        args,
+                        f"inline_{len(loop_steps)}",
+                        loop_working,
+                        loop_steps,
+                        supabase=supabase,
+                        ctx=ctx,
+                        trace_id=trace_id,
+                    )
+                except ApprovalPaused as paused:
+                    yield {
+                        "type": "_approval_paused",
+                        "paused": paused,
+                        "working": loop_working,
+                        "steps": loop_steps,
+                    }
+                    return
+                continue
 
         if tool_calls_acc:
             for _idx in sorted(tool_calls_acc.keys()):
@@ -241,9 +273,9 @@ async def run_groq_loop_streaming(
                     return
             continue
 
-        reply = "".join(content_buf)
-        for piece in content_buf:
-            yield {"type": "token", "content": piece}
+        reply = _strip_groq_malformed_tool_syntax(combined)
+        if reply:
+            yield {"type": "token", "content": reply}
         yield {"type": "_result", "reply": reply, "steps": loop_steps}
         return
 

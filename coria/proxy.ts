@@ -65,6 +65,15 @@ export async function proxy(request: NextRequest) {
       return NextResponse.redirect(url)
     }
 
+    const channel = request.nextUrl.searchParams.get("channel")?.trim()
+    if (channel && pathname === "/") {
+      supabaseResponse.cookies.set("coria_last_channel", channel, {
+        path: "/",
+        sameSite: "lax",
+        maxAge: 60 * 60 * 24 * 365,
+      })
+    }
+
     // Do not auto-redirect authenticated users away from /login here.
     // Invite links often land on /login#access_token=…; client AuthUrlHandler
     // must finish setSession and route to /auth/join before any server redirect.

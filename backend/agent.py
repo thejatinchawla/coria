@@ -208,6 +208,51 @@ _GROQ_FAILED_TOOL_RE = re.compile(
     re.DOTALL,
 )
 
+_GROQ_MALFORMED_TOOL_PATTERNS = (
+    _GROQ_FAILED_TOOL_RE,
+    re.compile(r"<function\((\w+)\>(.*?)</function>", re.DOTALL),
+    re.compile(r"<function\((\w+)\>(.*?)(?=\n|\Z)", re.DOTALL),
+)
+
+_GROQ_MALFORMED_TOOL_STRIP_RE = re.compile(
+    r"<function[=(]\w+\>.*?(?:</function>|/>)",
+    re.DOTALL,
+)
+
+
+def _parse_groq_tool_args(raw: str) -> dict | None:
+    cleaned = raw.strip().rstrip(">")
+    if not cleaned:
+        return {}
+    if cleaned.startswith("{"):
+        try:
+            return json.loads(cleaned)
+        except json.JSONDecodeError:
+            return None
+    try:
+        return json.loads("{" + cleaned + "}")
+    except json.JSONDecodeError:
+        return None
+
+
+def _parse_groq_malformed_tool_from_text(text: str) -> tuple[str, dict] | None:
+    """Parse Groq XML-style tool syntax leaked into plain assistant text."""
+    for pattern in _GROQ_MALFORMED_TOOL_PATTERNS:
+        match = pattern.search(text)
+        if not match:
+            continue
+        args = _parse_groq_tool_args(match.group(2))
+        if args is None:
+            continue
+        return match.group(1), args
+    return None
+
+
+def _strip_groq_malformed_tool_syntax(text: str) -> str:
+    cleaned = _GROQ_MALFORMED_TOOL_STRIP_RE.sub("", text)
+    cleaned = _GROQ_FAILED_TOOL_RE.sub("", cleaned)
+    return cleaned.strip()
+
 
 def _groq_error_details(error: BadRequestError | APIError) -> dict | None:
     """Extract the nested error object from Groq HTTP or SSE failures."""
@@ -237,6 +282,9 @@ def _parse_groq_tool_use_failed(
     if not err or err.get("code") != "tool_use_failed":
         return None
     failed = err.get("failed_generation") or ""
+    parsed = _parse_groq_malformed_tool_from_text(failed)
+    if parsed:
+        return parsed
     match = _GROQ_FAILED_TOOL_RE.search(failed)
     if not match:
         return None
@@ -392,9 +440,26 @@ async def run_groq_loop(
         message = response.choices[0].message
         tool_calls = message.tool_calls or []
 
-        # No tool calls -> this is the final answer.
+        # No tool calls -> final answer (or inline malformed Groq tool syntax).
         if not tool_calls:
-            return message.content or "", steps
+            content = message.content or ""
+            if active_tools:
+                inline_tool = _parse_groq_malformed_tool_from_text(content)
+                if inline_tool:
+                    name, args = inline_tool
+                    print(
+                        f"[groq] recovered inline tool call: {name}({args})",
+                        flush=True,
+                    )
+                    await _run_groq_tool(
+                        name,
+                        args,
+                        f"inline_{len(steps)}",
+                        working,
+                        steps,
+                    )
+                    continue
+            return _strip_groq_malformed_tool_syntax(content), steps
 
         # Record the assistant turn (with its tool calls) for the next round.
         working.append(
