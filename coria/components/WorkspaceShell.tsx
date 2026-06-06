@@ -4,7 +4,6 @@ import {
   createContext,
   useCallback,
   useContext,
-  useEffect,
   useMemo,
   useRef,
   useState,
@@ -12,10 +11,13 @@ import {
 import { usePathname, useRouter } from "next/navigation"
 import { AppShell } from "@/components/AppShell"
 import type { WorkspaceShellContext } from "@/lib/app-context"
+import {
+  readStoredChannelSlug,
+  readUrlChannelSlug,
+  writeStoredChannelSlug,
+} from "@/lib/channel-slug"
 import { chatUrl } from "@/lib/settings-url"
 import type { Channel } from "@/types"
-
-const LAST_CHANNEL_KEY = "coria_last_channel"
 
 type ChatBridge = {
   onChannelSelect?: (channel: Channel) => void
@@ -59,36 +61,21 @@ export function WorkspaceShell({
   const [switchingChannelId, setSwitchingChannelId] = useState<string | null>(
     null,
   )
-  const [lastChannelSlug, setLastChannelSlug] = useState("general")
-  const [chatChannelSlug, setChatChannelSlug] = useState("general")
+  const [lastChannelSlug, setLastChannelSlug] = useState(readStoredChannelSlug)
+  const [channelRevision, setChannelRevision] = useState(0)
 
   const isChatRoute = pathname === "/"
-  const activeChannelSlug = isChatRoute ? chatChannelSlug : lastChannelSlug
+  const activeChannelSlug = useMemo(() => {
+    if (!isChatRoute) return lastChannelSlug
+    void channelRevision
+    return readUrlChannelSlug()
+  }, [channelRevision, isChatRoute, lastChannelSlug])
 
   const setActiveChannelSlug = useCallback((slug: string) => {
-    setChatChannelSlug(slug)
+    writeStoredChannelSlug(slug)
     setLastChannelSlug(slug)
-    sessionStorage.setItem(LAST_CHANNEL_KEY, slug)
+    setChannelRevision((value) => value + 1)
   }, [])
-
-  useEffect(() => {
-    setChannels(initial.channels)
-  }, [initial.channels])
-
-  useEffect(() => {
-    const stored = sessionStorage.getItem(LAST_CHANNEL_KEY)
-    if (stored) setLastChannelSlug(stored)
-  }, [])
-
-  useEffect(() => {
-    if (pathname !== "/") return
-    const slug =
-      new URLSearchParams(window.location.search).get("channel")?.trim() ||
-      "general"
-    setChatChannelSlug(slug)
-    setLastChannelSlug(slug)
-    sessionStorage.setItem(LAST_CHANNEL_KEY, slug)
-  }, [pathname])
 
   const registerChatBridge = useCallback((bridge: ChatBridge | null) => {
     chatBridgeRef.current = bridge

@@ -108,6 +108,8 @@ export function MessageList({
   useEffect(() => {
     if (!expandedThreadId || !threadProps?.onCloseThread) return
 
+    const closeThread = () => threadProps.onCloseThread?.()
+
     function onPointerDown(event: MouseEvent) {
       const target = event.target
       if (!(target instanceof Node)) return
@@ -118,12 +120,12 @@ export function MessageList({
       ) {
         return
       }
-      threadProps?.onCloseThread?.()
+      closeThread()
     }
 
     document.addEventListener("mousedown", onPointerDown)
     return () => document.removeEventListener("mousedown", onPointerDown)
-  }, [expandedThreadId, threadProps?.onCloseThread])
+  }, [expandedThreadId, threadProps])
 
   useEffect(() => {
     const lastId = messages.at(-1)?.id

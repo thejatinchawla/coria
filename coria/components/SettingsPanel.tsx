@@ -318,13 +318,11 @@ function SettingsSectionPanel({
   id,
   agents,
   channels,
-  memberRole,
   canManageLlm,
 }: {
   id: SettingsId
   agents: Agent[]
   channels: Channel[]
-  memberRole: MemberRole
   canManageLlm: boolean
 }) {
   switch (id) {
@@ -371,12 +369,11 @@ export function SettingsPanel({
             id={id}
             agents={agents}
             channels={channels}
-            memberRole={memberRole}
             canManageLlm={canManageLlm}
           />
         </div>
       )),
-    [visited, section, agents, channels, memberRole, canManageLlm],
+    [visited, section, agents, channels, canManageLlm],
   )
 
   return <>{panels}</>

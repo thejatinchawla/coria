@@ -1,13 +1,11 @@
 "use client"
 
-import Link from "next/link"
 import { Menu } from "lucide-react"
 import { SettingsNav } from "@/components/SettingsNav"
 import { SettingsPanel } from "@/components/SettingsPanel"
 import { Button } from "@/components/ui/button"
 import { useSidebarMenu } from "@/components/AppShell"
 import { settingsLinkTitle, type SettingsId } from "@/lib/settings-links"
-import { chatUrl } from "@/lib/settings-url"
 import { useWorkspaceShell } from "@/components/WorkspaceShell"
 import type { Agent, MemberRole } from "@/types"
 
@@ -23,7 +21,7 @@ export function SettingsPageView({
   agents: Agent[]
 }) {
   const { openSidebar } = useSidebarMenu()
-  const { shell, activeChannelSlug } = useWorkspaceShell()
+  const { shell } = useWorkspaceShell()
   const title = settingsLinkTitle(section)
 
   return (

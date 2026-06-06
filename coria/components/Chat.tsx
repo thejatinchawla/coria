@@ -56,7 +56,6 @@ export function Chat({
   memberId,
   workspaceId,
   initialMessages,
-  userEmail,
   userDisplayName,
 }: {
   workspace: Workspace
@@ -68,7 +67,6 @@ export function Chat({
   memberId: string | null
   workspaceId: string
   initialMessages: Message[]
-  userEmail: string
   userDisplayName: string
 }) {
   const { toast } = useToast()
@@ -104,8 +102,11 @@ export function Chat({
   const [pinnedMessages, setPinnedMessages] = useState<Message[]>([])
   const [channelTab, setChannelTab] = useState<ChannelTab>("messages")
   const [composerPrefill, setComposerPrefill] = useState<string | null>(null)
-  activeChannelRef.current = activeChannel
-  messagesRef.current = messages
+
+  useEffect(() => {
+    activeChannelRef.current = activeChannel
+    messagesRef.current = messages
+  }, [activeChannel, messages])
 
   const resetChannelViewState = useCallback(() => {
     setExpandedThreadId(null)
@@ -276,8 +277,8 @@ export function Chat({
   }, [])
 
   const messageCanDelete = useCallback(
-    (message: Message) => canDeleteMessage(message, memberId, memberRole),
-    [memberId, memberRole],
+    (message: Message) => canDeleteMessage(message, memberId),
+    [memberId],
   )
 
   const scrollToMessage = useCallback((messageId: string) => {
@@ -342,14 +343,6 @@ export function Chat({
     },
     [navigateToMessage],
   )
-
-  useEffect(() => {
-    setActiveChannel(channel)
-    setMessages(initialMessages)
-    messageCacheRef.current[channel.id] = initialMessages
-    resetChannelViewState()
-    setActiveChannelSlug(channel.slug)
-  }, [channel.id, channel.slug, initialMessages, resetChannelViewState, setActiveChannelSlug])
 
   useEffect(() => {
     function onPopState() {

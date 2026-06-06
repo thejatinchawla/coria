@@ -42,7 +42,6 @@ export function PinsView({
           {pins.map((message) => {
             const agent = messageAgent(message, agentsById)
             const member = messageMember(message, membersById)
-            const isAgent = message.sender_type === "agent"
 
             return (
               <li key={message.id} className="group">

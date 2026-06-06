@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
-import type { MemberRole, Message, MessageSearchHit } from "@/types"
+import type { Message, MessageSearchHit } from "@/types"
 
 export const MAX_PINNED_MESSAGES = 5
 
@@ -106,7 +106,6 @@ export async function setMessagePinned(
 export function canDeleteMessage(
   message: Message,
   memberId: string | null,
-  _memberRole: MemberRole,
 ): boolean {
   return (
     message.sender_type === "human" &&

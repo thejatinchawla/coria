@@ -53,11 +53,7 @@ const CRON_PRESETS = [
   { label: "Every 6 hours", expr: "0 */6 * * *" },
 ] as const
 
-function formFromTrigger(
-  trigger: AgentTrigger,
-  agents: Agent[],
-  channels: Channel[],
-): TriggerForm {
+function formFromTrigger(trigger: AgentTrigger): TriggerForm {
   const config = trigger.config ?? {}
   return {
     agent_id: trigger.agent_id,
@@ -237,7 +233,7 @@ export function TriggerSettings({
   function startEdit(trigger: AgentTrigger) {
     setEditingId(trigger.id)
     setShowCreate(false)
-    setForm(formFromTrigger(trigger, agents, channels))
+    setForm(formFromTrigger(trigger))
   }
 
   const formVisible = showCreate || editingId

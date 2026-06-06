@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useSyncExternalStore } from "react"
 import { Monitor, Moon, Sun } from "lucide-react"
 import { useTheme } from "next-themes"
 import { THEME_OPTIONS, type ThemePreference } from "@/lib/theme"
@@ -12,11 +12,11 @@ const THEME_ICONS = {
   system: Monitor,
 } as const
 
+const emptySubscribe = () => () => {}
+
 export function ThemeSettings() {
   const { theme, setTheme, resolvedTheme } = useTheme()
-  const [mounted, setMounted] = useState(false)
-
-  useEffect(() => setMounted(true), [])
+  const mounted = useSyncExternalStore(emptySubscribe, () => true, () => false)
 
   const activeTheme = (theme ?? "system") as ThemePreference
 

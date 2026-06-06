@@ -73,6 +73,7 @@ export default async function Home({ searchParams }: PageProps) {
 
   return (
     <Chat
+      key={channel.id}
       workspace={shell.workspace}
       memberRole={shell.memberRole}
       channel={channel}
@@ -82,7 +83,6 @@ export default async function Home({ searchParams }: PageProps) {
       memberId={memberId}
       workspaceId={shell.workspace.id}
       initialMessages={(messages ?? []) as Message[]}
-      userEmail={shell.userEmail}
       userDisplayName={shell.userDisplayName}
     />
   )
