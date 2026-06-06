@@ -8,6 +8,7 @@ import {
   fetchMember,
   fetchUserWorkspaces,
   fetchWorkspace,
+  fetchWorkspaceMembers,
 } from "@/lib/workspace"
 import { getActiveWorkspaceIdFromCookie } from "@/lib/workspace-cookie"
 import type { Agent, Channel, Member, MemberRole, Workspace } from "@/types"
@@ -20,6 +21,7 @@ export type WorkspaceShellContext = {
   memberId: string | null
   channels: Channel[]
   agents: Agent[]
+  workspaceMembers: Member[]
   userEmail: string
   userDisplayName: string
 }
@@ -59,9 +61,10 @@ export const loadWorkspaceShellContext = cache(
     const memberId = member.id
     const resolvedDisplayName = memberDisplayName(member)
 
-    const [channels, agents] = await Promise.all([
+    const [channels, agents, workspaceMembers] = await Promise.all([
       fetchChannels(supabase, workspace.id, memberId),
       fetchAgents(supabase, workspace.id),
+      fetchWorkspaceMembers(supabase, workspace.id),
     ])
 
     return {
@@ -72,6 +75,7 @@ export const loadWorkspaceShellContext = cache(
       memberId,
       channels,
       agents,
+      workspaceMembers,
       userEmail: user.email ?? "",
       userDisplayName: resolvedDisplayName,
     }

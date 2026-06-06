@@ -11,7 +11,10 @@ import {
   Users,
   X,
 } from "lucide-react"
-import type { Channel, MessageSearchHit } from "@/types"
+import type { Agent, Channel, Member, MessageSearchHit } from "@/types"
+import { AgentAvatar } from "@/components/AgentAvatar"
+import { AgentAiBadge } from "@/components/AgentAiBadge"
+import { MemberAvatar } from "@/components/MemberAvatar"
 import { ChannelSettingsDialog } from "@/components/ChannelSettingsDialog"
 import { LinkifiedText } from "@/components/LinkifiedText"
 import { cn } from "@/lib/utils"
@@ -71,6 +74,8 @@ function ChannelTabButton({
 export function ChannelHeader({
   channel,
   workspaceName,
+  directAgent = null,
+  directMember = null,
   canManageChannel = false,
   onChannelUpdated,
   activeTab = "messages",
@@ -86,6 +91,8 @@ export function ChannelHeader({
 }: {
   channel: Channel
   workspaceName: string
+  directAgent?: Agent | null
+  directMember?: Member | null
   canManageChannel?: boolean
   onChannelUpdated?: (channel: Channel) => void
   activeTab?: ChannelTab
@@ -103,11 +110,16 @@ export function ChannelHeader({
   const [searchOpen, setSearchOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
 
+  const isDirect = channel.type === "direct"
+  const directTitle =
+    directAgent?.name ?? directMember?.display_name ?? channel.name
   const subtitle =
     channel.description?.trim() ||
-    (channel.name === "general"
-      ? "Workspace-wide updates and announcements"
-      : workspaceName)
+    (isDirect
+      ? "Direct message"
+      : channel.name === "general"
+        ? "Workspace-wide updates and announcements"
+        : workspaceName)
 
   return (
     <header className="relative shrink-0 border-b bg-background">
@@ -122,19 +134,42 @@ export function ChannelHeader({
             <Menu className="size-5" />
           </button>
           <div className="min-w-0">
-            <div className="flex min-w-0 items-baseline gap-2">
-              <h1 className="truncate text-[15px] font-bold">#{channel.name}</h1>
-              <span className="hidden truncate text-sm text-muted-foreground sm:inline">
-                {subtitle}
-              </span>
+            <div className="flex min-w-0 items-center gap-2">
+              {isDirect &&
+                (directAgent ? (
+                  <AgentAvatar
+                    name={directAgent.name}
+                    mentionSlug={directAgent.mention_slug}
+                    color={directAgent.color}
+                    avatarUrl={directAgent.avatar_url}
+                    size="sm"
+                  />
+                ) : directMember ? (
+                  <MemberAvatar
+                    member={directMember}
+                    displayName={directMember.display_name}
+                    size="sm"
+                  />
+                ) : null)}
+              <div className="min-w-0">
+                <div className="flex min-w-0 items-baseline gap-2">
+                  <h1 className="truncate text-[15px] font-bold">
+                    {isDirect ? directTitle : `#${channel.name}`}
+                  </h1>
+                  {directAgent && <AgentAiBadge compact />}
+                  <span className="hidden truncate text-sm text-muted-foreground sm:inline">
+                    {subtitle}
+                  </span>
+                </div>
+                <span className="truncate text-xs text-muted-foreground sm:hidden">
+                  {subtitle}
+                </span>
+              </div>
             </div>
-            <span className="truncate text-xs text-muted-foreground sm:hidden">
-              {subtitle}
-            </span>
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-0.5">
-          {canManageChannel && onChannelUpdated && (
+          {canManageChannel && !isDirect && onChannelUpdated && (
             <button
               type="button"
               aria-label="Edit channel"

@@ -64,6 +64,9 @@ export function WorkspaceShell({
   const [workspaces, setWorkspaces] = useState(initial.workspaces)
   const [memberRole, setMemberRole] = useState<MemberRole>(initial.memberRole)
   const [agents, setAgents] = useState<Agent[]>(initial.agents)
+  const [workspaceMembers, setWorkspaceMembers] = useState<Member[]>(
+    initial.workspaceMembers,
+  )
   const [channels, setChannels] = useState(initial.channels)
   const [currentMember, setCurrentMember] = useState(initial.member)
   const [userDisplayName, setUserDisplayName] = useState(initial.userDisplayName)
@@ -101,6 +104,7 @@ export function WorkspaceShell({
     setWorkspaces(initial.workspaces)
     setMemberRole(initial.memberRole)
     setAgents(initial.agents)
+    setWorkspaceMembers(initial.workspaceMembers)
     setChannels(initial.channels)
     setCurrentMember(initial.member)
     setUserDisplayName(initial.userDisplayName)
@@ -109,6 +113,7 @@ export function WorkspaceShell({
     initial.workspaces,
     initial.memberRole,
     initial.agents,
+    initial.workspaceMembers,
     initial.channels,
     initial.member,
     initial.userDisplayName,
@@ -147,6 +152,7 @@ export function WorkspaceShell({
       workspaces,
       memberRole,
       agents,
+      workspaceMembers,
       member: currentMember,
       userDisplayName,
       channels,
@@ -157,6 +163,7 @@ export function WorkspaceShell({
       workspaces,
       memberRole,
       agents,
+      workspaceMembers,
       currentMember,
       userDisplayName,
       channels,
@@ -195,6 +202,9 @@ export function WorkspaceShell({
         email={initial.userEmail}
         workspaceId={workspace.id}
         memberRole={memberRole}
+        agents={agents}
+        workspaceMembers={workspaceMembers}
+        currentMemberId={currentMember.id}
         onChannelSelect={handleChannelSelect}
         onChannelCreated={handleChannelCreated}
         onChannelDeleted={handleChannelDeleted}

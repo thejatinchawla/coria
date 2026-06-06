@@ -3,7 +3,7 @@
 import { createContext, useContext, useMemo, useState } from "react"
 import { usePathname } from "next/navigation"
 import { Sidebar } from "@/components/Sidebar"
-import type { Channel, MemberRole, Workspace } from "@/types"
+import type { Agent, Channel, Member, MemberRole, Workspace } from "@/types"
 
 const SidebarMenuContext = createContext<{
   openSidebar: () => void
@@ -23,6 +23,9 @@ export function AppShell({
   displayName,
   email,
   memberRole,
+  agents,
+  workspaceMembers,
+  currentMemberId,
   switchingChannelId = null,
   onChannelSelect,
   onChannelCreated,
@@ -36,6 +39,9 @@ export function AppShell({
   displayName: string
   email: string
   memberRole: MemberRole
+  agents: Agent[]
+  workspaceMembers: Member[]
+  currentMemberId: string
   switchingChannelId?: string | null
   onChannelSelect?: (channel: Channel) => void
   onChannelCreated?: (channel: Channel) => void
@@ -67,6 +73,9 @@ export function AppShell({
           email={email}
           workspaceId={workspaceId}
           memberRole={memberRole}
+          agents={agents}
+          workspaceMembers={workspaceMembers}
+          currentMemberId={currentMemberId}
           open={sidebarOpen}
           onClose={() => setSidebarOpen(false)}
           onChannelSelect={onChannelSelect}

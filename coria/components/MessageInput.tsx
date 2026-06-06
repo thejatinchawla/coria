@@ -22,7 +22,9 @@ function messagePlaceholder(
   channelSlug: string,
   agents: Agent[],
   compact: boolean,
+  directAgent: Agent | null,
 ): string {
+  if (directAgent) return `Message ${directAgent.name}…`
   if (compact) return `Message #${channelSlug}`
   const active = agents.filter((a) => a.status === "active")
   if (active.length === 0) {
@@ -55,6 +57,7 @@ export function MessageInput({
   senderName,
   threadId = null,
   compact = false,
+  directAgentId = null,
   onStreamStart,
   onStreamStatus,
   onStreamToken,
@@ -75,6 +78,8 @@ export function MessageInput({
   senderName: string
   threadId?: string | null
   compact?: boolean
+  /** When set, every message auto-invokes this agent (direct agent chat). */
+  directAgentId?: string | null
   onStreamStart?: (agent: Pick<Agent, "name" | "color" | "avatar_url">) => void
   onStreamStatus?: (status: string) => void
   onStreamToken?: (token: string) => void
@@ -94,10 +99,17 @@ export function MessageInput({
   const formRef = useRef<HTMLFormElement>(null)
   const refocusAfterSendRef = useRef(false)
 
+  const directAgent = useMemo(
+    () =>
+      directAgentId
+        ? (agents.find((a) => a.id === directAgentId) ?? null)
+        : null,
+    [agents, directAgentId],
+  )
   const hintAgents = useMemo(() => matchingAgents(text, agents), [text, agents])
   const placeholder = useMemo(
-    () => messagePlaceholder(channelSlug, agents, isMobile),
-    [channelSlug, agents, isMobile],
+    () => messagePlaceholder(channelSlug, agents, isMobile, directAgent),
+    [channelSlug, agents, isMobile, directAgent],
   )
   const showAgentHint = hintAgents.length > 0
   const canSend = text.trim().length > 0 && !sending && !agentsGloballyPaused
@@ -196,20 +208,24 @@ export function MessageInput({
       })
     }
 
-    const mentionMatch = content.match(/^@(\w+)\s+([\s\S]+)/i)
-    if (mentionMatch) {
-      const slug = mentionMatch[1].toLowerCase()
-      const userMessage = mentionMatch[2].trim()
+    const mentionMatch = directAgentId
+      ? null
+      : content.match(/^@(\w+)\s+([\s\S]+)/i)
+    if (directAgentId || mentionMatch) {
+      const slug = mentionMatch?.[1]?.toLowerCase()
+      const userMessage = mentionMatch?.[2]?.trim() ?? content
       const resolvedAgentId =
-        (await fetchAgentBySlug(supabase, workspaceId, slug)) ??
+        directAgentId ??
+        (await fetchAgentBySlug(supabase, workspaceId, slug!)) ??
         defaultAgentId
       const resolvedAgent =
         agents.find((a) => a.id === resolvedAgentId) ??
-        agents.find((a) => a.mention_slug === slug) ??
+        (slug ? agents.find((a) => a.mention_slug === slug) : null) ??
+        directAgent ??
         null
 
       onStreamStart?.({
-        name: resolvedAgent?.name ?? slug,
+        name: resolvedAgent?.name ?? slug ?? "Agent",
         color: resolvedAgent?.color,
         avatar_url: resolvedAgent?.avatar_url,
       })

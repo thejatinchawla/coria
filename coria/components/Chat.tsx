@@ -629,6 +629,14 @@ export function Chat({
 
   const canManageChannels =
     memberRole === "owner" || memberRole === "admin"
+  const directAgent = activeChannel.direct_agent_id
+    ? (agents.find((a) => a.id === activeChannel.direct_agent_id) ?? null)
+    : null
+  const directMember = activeChannel.direct_peer_member_id
+    ? (shell.workspaceMembers.find(
+        (m) => m.id === activeChannel.direct_peer_member_id,
+      ) ?? null)
+    : null
 
   useEffect(() => {
     registerChatBridge({
@@ -829,7 +837,11 @@ export function Chat({
         <ChannelHeader
           channel={activeChannel}
           workspaceName={workspace.name}
-          canManageChannel={canManageChannels}
+          directAgent={directAgent}
+          directMember={directMember}
+          canManageChannel={
+            canManageChannels && activeChannel.type !== "direct"
+          }
           onChannelUpdated={handleChannelUpdated}
           activeTab={channelTab}
           pinnedCount={pinnedMessages.length}
@@ -898,6 +910,7 @@ export function Chat({
               agentsGloballyPaused={agentsGloballyPaused}
               memberId={memberId}
               senderName={userDisplayName}
+              directAgentId={activeChannel.direct_agent_id}
               prefill={composerPrefill}
               onPrefillApplied={() => setComposerPrefill(null)}
               {...makeStreamHandlers(null)}

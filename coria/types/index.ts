@@ -3,7 +3,7 @@
 export type SenderType = "human" | "agent"
 
 export type MemberRole = "owner" | "admin" | "member"
-export type ChannelType = "hybrid" | "human_only"
+export type ChannelType = "hybrid" | "human_only" | "direct"
 export type AgentStatus = "active" | "paused"
 
 export type Workspace = {
@@ -20,6 +20,8 @@ export type Channel = {
   slug: string
   type: ChannelType
   description?: string | null
+  direct_agent_id?: string | null
+  direct_peer_member_id?: string | null
   created_at: string
 }
 

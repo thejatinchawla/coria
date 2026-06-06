@@ -9,7 +9,7 @@ export async function fetchChannelsForMember(
   const { data, error } = await supabase
     .from("channels")
     .select(
-      "id,workspace_id,name,slug,type,description,created_at, channel_members!inner(member_id)",
+      "id,workspace_id,name,slug,type,description,direct_agent_id,direct_peer_member_id,created_at, channel_members!inner(member_id)",
     )
     .eq("workspace_id", workspaceId)
     .eq("channel_members.member_id", memberId)
@@ -32,7 +32,7 @@ export async function fetchChannelsForMember(
 const MEMBER_COLUMNS =
   "id,workspace_id,user_id,display_name,role,avatar_url,bio,created_at"
 
-async function fetchWorkspaceMembers(
+export async function fetchWorkspaceMembers(
   supabase: SupabaseClient,
   workspaceId: string,
 ): Promise<Member[]> {

@@ -56,11 +56,14 @@ export function MemberAvatar({
   displayName,
   size = "md",
   className,
+  interactive = true,
 }: {
   member?: Member | null
   displayName: string
   size?: keyof typeof SIZE
   className?: string
+  /** When false, render avatar only (e.g. inside another button). */
+  interactive?: boolean
 }) {
   const name = member?.display_name ?? displayName
   const avatar = (
@@ -72,7 +75,7 @@ export function MemberAvatar({
     />
   )
 
-  if (!member) return avatar
+  if (!member || !interactive) return avatar
 
   return (
     <ProfileHoverCard content={<MemberProfileContent member={member} />}>

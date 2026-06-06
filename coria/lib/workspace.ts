@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
-import { fetchChannelsForMember } from "@/lib/channel-members-data"
+import { fetchChannelsForMember, fetchWorkspaceMembers } from "@/lib/channel-members-data"
+import { CHANNEL_SELECT } from "@/lib/direct-messages"
 import type { Agent, Channel, Member, Workspace, WorkspaceSettings } from "@/types"
 
 export const DEMO_WORKSPACE_SLUG = "coria-demo"
@@ -164,7 +165,7 @@ export async function fetchChannels(
 
   const { data, error } = await supabase
     .from("channels")
-    .select("id,workspace_id,name,slug,type,description,created_at")
+    .select(CHANNEL_SELECT)
     .eq("workspace_id", workspaceId)
     .order("created_at", { ascending: true })
 
@@ -183,7 +184,7 @@ export async function fetchChannelBySlug(
 ): Promise<Channel | null> {
   const { data, error } = await supabase
     .from("channels")
-    .select("id,workspace_id,name,slug,type,description,created_at")
+    .select(CHANNEL_SELECT)
     .eq("workspace_id", workspaceId)
     .eq("slug", slug)
     .maybeSingle()
@@ -195,6 +196,8 @@ export async function fetchChannelBySlug(
 
   return (data as Channel | null) ?? null
 }
+
+export { fetchWorkspaceMembers } from "@/lib/channel-members-data"
 
 export async function fetchMemberId(
   supabase: SupabaseClient,
@@ -444,7 +447,7 @@ export async function updateChannel(
     })
     .eq("id", channelId)
     .eq("workspace_id", workspaceId)
-    .select("id,workspace_id,name,slug,type,description,created_at")
+    .select(CHANNEL_SELECT)
     .single()
 
   if (error) {
