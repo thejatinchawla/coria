@@ -8,8 +8,13 @@ export const metadata: Metadata = {
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>
+  searchParams: Promise<{ error?: string; detail?: string }>
 }) {
   const params = await searchParams
-  return <LoginForm authError={params.error === "auth"} />
+  return (
+    <LoginForm
+      authError={params.error === "auth"}
+      authErrorDetail={params.detail}
+    />
+  )
 }

@@ -99,6 +99,8 @@ Also check **Authentication → Providers → Email**:
 - **Email** provider enabled
 - For the smoothest first signup, you can turn **Confirm email** off during local testing (turn it back on for production)
 
+**Email templates (required for magic links):** under **Authentication → Email Templates**, update **Magic Link**, **Invite user**, and **Confirm signup** using the HTML in [`backend/supabase/templates/`](backend/supabase/templates/). The default `ConfirmationURL` uses PKCE and often fails in Next.js; the templates use `token_hash` instead.
+
 ### 5. Configure the backend
 
 ```bash
@@ -224,6 +226,7 @@ cd coria && npm run lint && npm run build
 | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
 | Auth redirect / “invalid redirect URL” | Add all three `/auth/*` URLs under **Authentication → URL Configuration** (step 4)                                  |
 | Magic link says user not found         | Use **Sign up** first; magic link only signs in existing accounts                                                   |
+| Magic link / PKCE verifier error       | Update Supabase **Email Templates** from `backend/supabase/templates/` (see step 4); request a new link after saving |
 | Agent never replies / stream hangs     | Backend not running, wrong `BACKEND_URL`, or `INVOKE_SECRET` mismatch between `backend/.env` and `coria/.env.local` |
 | `401 Unauthorized` on invoke           | Set the same `INVOKE_SECRET` in both apps, or leave both empty for local-only dev                                   |
 | `/health` shows `"db":"error"`         | Wrong `SUPABASE_SERVICE_KEY` or migrations not applied (`supabase db push`)                                         |

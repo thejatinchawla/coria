@@ -12,7 +12,13 @@ import {
 import { LoadingButton } from "@/components/ui/loading-button"
 import { Button } from "@/components/ui/button"
 
-export function LoginForm({ authError }: { authError?: boolean }) {
+export function LoginForm({
+  authError,
+  authErrorDetail,
+}: {
+  authError?: boolean
+  authErrorDetail?: string
+}) {
   const router = useRouter()
 
   const [mode, setMode] = useState<"signin" | "signup">("signin")
@@ -20,11 +26,13 @@ export function LoginForm({ authError }: { authError?: boolean }) {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [loading, setLoading] = useState(false)
-  const [message, setMessage] = useState<string | null>(
-    authError
-      ? "Could not complete sign-in. Open the invite link from your email again, or sign in below."
-      : null,
-  )
+  const [message, setMessage] = useState<string | null>(() => {
+    if (authErrorDetail) return authErrorDetail
+    if (authError) {
+      return "Could not complete sign-in. Request a new link below, or sign in with password."
+    }
+    return null
+  })
 
   useEffect(() => {
     const { pathname, search, hash } = window.location

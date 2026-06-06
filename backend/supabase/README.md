@@ -35,6 +35,20 @@ Dashboard → **Authentication → URL Configuration**:
 - **Site URL:** `http://localhost:3000` (or production URL)
 - **Redirect URLs:** add `/auth/callback`, `/auth/confirm`, and `/auth/join` for each origin (local + deployed)
 
+## Email templates (required for magic links)
+
+Magic links must use `token_hash` in the URL (not the default `ConfirmationURL` PKCE flow).
+
+Dashboard → **Authentication → Email Templates** — paste from `templates/`:
+
+| Template        | File                      |
+|-----------------|---------------------------|
+| Magic Link      | `templates/magic-link.html` |
+| Invite user     | `templates/invite.html`     |
+| Confirm signup  | `templates/confirm-signup.html` |
+
+Each link uses `{{ .RedirectTo }}&token_hash={{ .TokenHash }}&type=…` so sign-in works in any browser (no PKCE cookie required).
+
 ## Optional
 
 **Backfill message embeddings** (one channel):
