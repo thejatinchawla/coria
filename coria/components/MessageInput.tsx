@@ -58,6 +58,8 @@ export function MessageInput({
   threadId = null,
   compact = false,
   directAgentId = null,
+  invokableAgents,
+  skipKeywordTriggers = false,
   onStreamStart,
   onStreamStatus,
   onStreamToken,
@@ -80,6 +82,10 @@ export function MessageInput({
   compact?: boolean
   /** When set, every message auto-invokes this agent (direct agent chat). */
   directAgentId?: string | null
+  /** Agents that can be @mentioned; defaults to all workspace agents. */
+  invokableAgents?: Agent[]
+  /** Skip keyword trigger fan-out (e.g. teammate DMs without agents). */
+  skipKeywordTriggers?: boolean
   onStreamStart?: (agent: Pick<Agent, "name" | "color" | "avatar_url">) => void
   onStreamStatus?: (status: string) => void
   onStreamToken?: (token: string) => void
@@ -106,13 +112,25 @@ export function MessageInput({
         : null,
     [agents, directAgentId],
   )
-  const hintAgents = useMemo(() => matchingAgents(text, agents), [text, agents])
-  const placeholder = useMemo(
-    () => messagePlaceholder(channelSlug, agents, isMobile, directAgent),
-    [channelSlug, agents, isMobile, directAgent],
+  const mentionAgents = invokableAgents ?? agents
+  const hintAgents = useMemo(
+    () => matchingAgents(text, mentionAgents),
+    [text, mentionAgents],
   )
-  const showAgentHint = hintAgents.length > 0
-  const canSend = text.trim().length > 0 && !sending && !agentsGloballyPaused
+  const placeholder = useMemo(() => {
+    if (skipKeywordTriggers && mentionAgents.length === 0) {
+      return "Message…"
+    }
+    return messagePlaceholder(channelSlug, mentionAgents, isMobile, directAgent)
+  }, [
+    channelSlug,
+    mentionAgents,
+    isMobile,
+    directAgent,
+    skipKeywordTriggers,
+  ])
+  const showAgentHint = hintAgents.length > 0 && !agentsGloballyPaused
+  const canSend = text.trim().length > 0 && !sending
 
   useEffect(() => {
     if (!prefill) return
@@ -195,7 +213,7 @@ export function MessageInput({
     }
 
     // Keyword triggers (skip @mention invokes — backend debounces per trigger)
-    if (!threadId) {
+    if (!threadId && !skipKeywordTriggers) {
       fetch("/api/triggers/keyword", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -212,6 +230,11 @@ export function MessageInput({
       ? null
       : content.match(/^@(\w+)\s+([\s\S]+)/i)
     if (directAgentId || mentionMatch) {
+      if (agentsGloballyPaused) {
+        toast("All agents are paused. Resume them in Settings → Agents.")
+        setSending(false)
+        return
+      }
       const slug = mentionMatch?.[1]?.toLowerCase()
       const userMessage = mentionMatch?.[2]?.trim() ?? content
       const resolvedAgentId =
@@ -219,8 +242,8 @@ export function MessageInput({
         (await fetchAgentBySlug(supabase, workspaceId, slug!)) ??
         defaultAgentId
       const resolvedAgent =
-        agents.find((a) => a.id === resolvedAgentId) ??
-        (slug ? agents.find((a) => a.mention_slug === slug) : null) ??
+        mentionAgents.find((a) => a.id === resolvedAgentId) ??
+        (slug ? mentionAgents.find((a) => a.mention_slug === slug) : null) ??
         directAgent ??
         null
 
@@ -368,14 +391,7 @@ export function MessageInput({
             onFocus={keepComposerVisible}
             rows={1}
             enterKeyHint="send"
-            placeholder={
-              agentsGloballyPaused
-                ? "All agents are paused"
-                : threadId
-                  ? "Reply in thread…"
-                  : placeholder
-            }
-            disabled={agentsGloballyPaused}
+            placeholder={threadId ? "Reply in thread…" : placeholder}
             aria-busy={sending}
             aria-autocomplete="list"
             aria-controls={showAgentHint ? "agent-mention-hint" : undefined}

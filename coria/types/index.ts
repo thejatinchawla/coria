@@ -22,6 +22,7 @@ export type Channel = {
   description?: string | null
   direct_agent_id?: string | null
   direct_peer_member_id?: string | null
+  created_by_member_id?: string | null
   created_at: string
 }
 

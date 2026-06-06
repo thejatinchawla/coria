@@ -118,13 +118,22 @@ BEGIN
 
   SELECT c.* INTO v_channel
   FROM channels c
-  JOIN channel_members cm ON cm.channel_id = c.id AND cm.member_id = v_member_id
   WHERE c.workspace_id = p_workspace_id
     AND c.type = 'direct'
-    AND c.direct_peer_member_id = p_peer_member_id
+    AND c.direct_peer_member_id IS NOT NULL
+    AND (
+      (c.created_by_member_id = v_member_id AND c.direct_peer_member_id = p_peer_member_id)
+      OR (c.created_by_member_id = p_peer_member_id AND c.direct_peer_member_id = v_member_id)
+    )
+  ORDER BY c.created_at ASC
   LIMIT 1;
 
   IF FOUND THEN
+    INSERT INTO channel_members (channel_id, member_id, added_by)
+    VALUES
+      (v_channel.id, v_member_id, v_member_id),
+      (v_channel.id, p_peer_member_id, v_member_id)
+    ON CONFLICT (channel_id, member_id) DO NOTHING;
     RETURN v_channel;
   END IF;
 
@@ -137,7 +146,8 @@ BEGIN
     RAISE EXCEPTION 'Member not found';
   END IF;
 
-  v_slug := 'dm-member-' || substr(p_peer_member_id::text, 1, 8);
+  v_slug := 'dm-member-' || substr(LEAST(v_member_id, p_peer_member_id)::text, 1, 8)
+    || '-' || substr(GREATEST(v_member_id, p_peer_member_id)::text, 1, 8);
 
   INSERT INTO channels (
     workspace_id,
@@ -158,7 +168,9 @@ BEGIN
   RETURNING * INTO v_channel;
 
   INSERT INTO channel_members (channel_id, member_id, added_by)
-  VALUES (v_channel.id, p_peer_member_id, v_member_id)
+  VALUES
+    (v_channel.id, v_member_id, v_member_id),
+    (v_channel.id, p_peer_member_id, v_member_id)
   ON CONFLICT (channel_id, member_id) DO NOTHING;
 
   RETURN v_channel;

@@ -13,54 +13,107 @@ import { Chat } from "@/components/Chat"
 import { SetupError } from "@/components/SetupError"
 import { isSettingsId } from "@/lib/settings-links"
 import { settingsUrl } from "@/lib/settings-url"
+import {
+  buildChatUrl,
+  parseChatLocation,
+  parseChatLocationStorageKey,
+} from "@/lib/chat-location"
+import {
+  legacyDmRedirectPath,
+  resolveChatChannel,
+} from "@/lib/resolve-chat-channel"
+import { cookies } from "next/headers"
+import { LAST_CHANNEL_COOKIE } from "@/lib/channel-slug"
 import type { Message } from "@/types"
 
 type PageProps = {
-  searchParams: Promise<{ channel?: string; settings?: string }>
+  searchParams: Promise<{
+    channel?: string
+    dm?: string
+    agent?: string
+    settings?: string
+  }>
 }
 
 export async function generateMetadata({
   searchParams,
 }: PageProps): Promise<Metadata> {
-  const { channel = "general" } = await searchParams
-  return { title: `#${channel}` }
+  const params = await searchParams
+  const location = parseChatLocation(params)
+  if (location?.kind === "member_dm") {
+    return { title: "Direct message" }
+  }
+  if (location?.kind === "agent_dm") {
+    return { title: "Agent chat" }
+  }
+  const slug = location?.kind === "channel" ? location.slug : "general"
+  return { title: slug.startsWith("dm-") ? "Direct message" : `#${slug}` }
 }
 
 export default async function Home({ searchParams }: PageProps) {
   const params = await searchParams
-  const channelSlug = params.channel?.trim() || "general"
 
   if (params.settings && isSettingsId(params.settings)) {
     redirect(settingsUrl(params.settings))
   }
 
-  if (!params.channel) {
-    redirect(`/?channel=${channelSlug}`)
-  }
-
   const shell = await loadWorkspaceShellContext()
   const supabase = await createClient()
-
-  const channel = await fetchChannelBySlug(
+  const memberId = await fetchMemberId(
     supabase,
     shell.workspace.id,
-    channelSlug,
+    shell.member.user_id,
   )
+
+  let location = parseChatLocation(params)
+
+  if (!location) {
+    const cookieStore = await cookies()
+    const stored = parseChatLocationStorageKey(
+      cookieStore.get(LAST_CHANNEL_COOKIE)?.value,
+    )
+    location = stored ?? { kind: "channel", slug: "general" }
+    redirect(buildChatUrl(location))
+  }
+
+  if (location.kind === "channel" && location.slug.startsWith("dm-")) {
+    const legacy = await fetchChannelBySlug(
+      supabase,
+      shell.workspace.id,
+      location.slug,
+    )
+    if (legacy) {
+      const nextPath = legacyDmRedirectPath(legacy, memberId)
+      if (nextPath) redirect(nextPath)
+    }
+  }
+
+  const channel = await resolveChatChannel(
+    supabase,
+    shell.workspace.id,
+    location,
+    memberId,
+  )
+
   if (!channel) {
-    if (channelSlug !== "general") {
-      redirect("/?channel=general")
+    if (location.kind === "channel" && location.slug !== "general") {
+      redirect(buildChatUrl({ kind: "channel", slug: "general" }))
     }
     return (
       <SetupError
-        title="Channel not found"
-        message='The #general channel is missing for this workspace.'
+        title="Conversation not found"
+        message="That direct message could not be opened."
       />
     )
   }
 
-  const [agentId, memberId, workspaceSettings] = await Promise.all([
+  const canonicalPath = legacyDmRedirectPath(channel, memberId)
+  if (canonicalPath && canonicalPath !== buildChatUrl(location)) {
+    redirect(canonicalPath)
+  }
+
+  const [agentId, workspaceSettings] = await Promise.all([
     fetchDefaultAgentId(supabase, shell.workspace.id),
-    fetchMemberId(supabase, shell.workspace.id, shell.member.user_id),
     fetchWorkspaceSettings(supabase, shell.workspace.id),
   ])
 

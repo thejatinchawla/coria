@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react"
 import { Bot, Trash2, UserPlus, Users } from "lucide-react"
+import { AddChannelAgentDialog } from "@/components/AddChannelAgentDialog"
 import { AddChannelMemberDialog } from "@/components/AddChannelMemberDialog"
 import { Button } from "@/components/ui/button"
 import { AgentAiBadge } from "@/components/AgentAiBadge"
@@ -79,7 +80,17 @@ function MemberRow({
   )
 }
 
-function AgentRow({ agent }: { agent: Agent }) {
+function AgentRow({
+  agent,
+  canRemove,
+  removing,
+  onRemove,
+}: {
+  agent: Agent
+  canRemove?: boolean
+  removing?: boolean
+  onRemove?: () => void
+}) {
   return (
     <li>
       <ProfileHoverCard
@@ -87,7 +98,7 @@ function AgentRow({ agent }: { agent: Agent }) {
       >
         <div
           className={cn(
-            "flex w-full items-center gap-3 rounded-lg px-2 py-2.5 text-left",
+            "group/agent flex w-full items-center gap-3 rounded-lg px-2 py-2.5 text-left",
             "hover:bg-muted/60",
           )}
         >
@@ -109,6 +120,22 @@ function AgentRow({ agent }: { agent: Agent }) {
             <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
               Paused
             </span>
+          )}
+          {canRemove && onRemove && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              loading={removing}
+              aria-label={`Remove ${agent.name} from conversation`}
+              onClick={(event) => {
+                event.preventDefault()
+                onRemove()
+              }}
+              className="shrink-0 text-muted-foreground opacity-100 hover:text-destructive md:opacity-0 md:group-hover/agent:opacity-100"
+            >
+              <Trash2 className="size-3.5" />
+            </Button>
           )}
         </div>
       </ProfileHoverCard>
@@ -146,7 +173,9 @@ export function ChannelMembersView({
   currentMemberId,
   loading = false,
   canAddMembers = true,
+  isMemberDirect = false,
   onMembersChange,
+  onAgentsChange,
 }: {
   channelId: string
   workspaceId: string
@@ -158,7 +187,9 @@ export function ChannelMembersView({
   currentMemberId: string | null
   loading?: boolean
   canAddMembers?: boolean
+  isMemberDirect?: boolean
   onMembersChange?: (members: Member[]) => void
+  onAgentsChange?: (agents: Agent[]) => void
 }) {
   const { toast } = useToast()
   const { confirm } = useConfirm()
@@ -167,15 +198,53 @@ export function ChannelMembersView({
   const showAddMembers = canAddMembers && !isGeneral
   const canRemoveMembers = isAdmin && !isGeneral
   const [addOpen, setAddOpen] = useState(false)
+  const [addAgentOpen, setAddAgentOpen] = useState(false)
   const [removingMemberId, setRemovingMemberId] = useState<string | null>(null)
+  const [removingAgentId, setRemovingAgentId] = useState<string | null>(null)
   const channelMemberIds = useMemo(
     () => new Set(members.map((member) => member.id)),
     [members],
   )
+  const channelAgentIds = useMemo(
+    () => new Set(agents.map((agent) => agent.id)),
+    [agents],
+  )
   const sortedMembers = sortMembers(members)
   const sortedAgents = sortAgents(agents)
-  const showAgents = channelType === "hybrid" && sortedAgents.length > 0
-  const totalCount = sortedMembers.length + (showAgents ? sortedAgents.length : 0)
+  const showHybridAgents = channelType === "hybrid" && sortedAgents.length > 0
+  const showMemberDmAgents = isMemberDirect
+  const showAgents = showHybridAgents || (showMemberDmAgents && sortedAgents.length > 0)
+  const totalCount =
+    sortedMembers.length +
+    (showHybridAgents || showMemberDmAgents ? sortedAgents.length : 0)
+
+  async function removeAgent(agent: Agent) {
+    const confirmed = await confirm({
+      title: "Remove agent?",
+      description: `${agent.name} will no longer respond in this conversation until added again.`,
+      confirmLabel: "Remove agent",
+      variant: "destructive",
+    })
+    if (!confirmed) return
+
+    setRemovingAgentId(agent.id)
+    try {
+      const res = await fetch(
+        `/api/channels/${channelId}/agents/${agent.id}`,
+        { method: "DELETE" },
+      )
+      if (!res.ok) {
+        const json = (await res.json().catch(() => ({}))) as { error?: string }
+        toast(json.error ?? "Could not remove agent from conversation.")
+        return
+      }
+      const json = (await res.json()) as { agents: Agent[] }
+      onAgentsChange?.(json.agents ?? [])
+      toast(`${agent.name} removed from conversation.`, "success")
+    } finally {
+      setRemovingAgentId(null)
+    }
+  }
 
   async function removeMember(member: Member) {
     const confirmed = await confirm({
@@ -262,17 +331,30 @@ export function ChannelMembersView({
             : ""}{" "}
             in this channel
           </p>
-          {showAddMembers && (
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              onClick={() => setAddOpen(true)}
-            >
-              <UserPlus className="size-4" />
-              Add
-            </Button>
-          )}
+          <div className="flex gap-2">
+            {showMemberDmAgents && (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => setAddAgentOpen(true)}
+              >
+                <Bot className="size-4" />
+                Add agent
+              </Button>
+            )}
+            {showAddMembers && (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => setAddOpen(true)}
+              >
+                <UserPlus className="size-4" />
+                Add
+              </Button>
+            )}
+          </div>
         </div>
 
         {sortedMembers.length > 0 && (
@@ -292,11 +374,31 @@ export function ChannelMembersView({
           </Section>
         )}
 
-        {showAgents && (
+        {showHybridAgents && (
           <Section title="Agents" count={sortedAgents.length}>
             {sortedAgents.map((agent) => (
               <AgentRow key={agent.id} agent={agent} />
             ))}
+          </Section>
+        )}
+
+        {showMemberDmAgents && (
+          <Section title="Agents" count={sortedAgents.length}>
+            {sortedAgents.length === 0 ? (
+              <p className="px-2 pb-2 text-xs text-muted-foreground">
+                No agents in this chat. Add one to @mention them here.
+              </p>
+            ) : (
+              sortedAgents.map((agent) => (
+                <AgentRow
+                  key={agent.id}
+                  agent={agent}
+                  canRemove
+                  removing={removingAgentId === agent.id}
+                  onRemove={() => void removeAgent(agent)}
+                />
+              ))
+            )}
           </Section>
         )}
 
@@ -318,6 +420,20 @@ export function ChannelMembersView({
           onAdded={(next) => {
             onMembersChange?.(next)
             setAddOpen(false)
+          }}
+        />
+      )}
+
+      {showMemberDmAgents && (
+        <AddChannelAgentDialog
+          open={addAgentOpen}
+          channelId={channelId}
+          workspaceId={workspaceId}
+          channelAgentIds={channelAgentIds}
+          onClose={() => setAddAgentOpen(false)}
+          onAdded={(next) => {
+            onAgentsChange?.(next)
+            setAddAgentOpen(false)
           }}
         />
       )}

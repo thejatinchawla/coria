@@ -24,6 +24,9 @@ export function ThreadInline({
   workspaceId,
   defaultAgentId,
   agents,
+  invokableAgents,
+  skipKeywordTriggers,
+  directAgentId,
   agentsGloballyPaused,
   memberId,
   senderName,
@@ -51,6 +54,9 @@ export function ThreadInline({
   workspaceId: string
   defaultAgentId: string
   agents: Agent[]
+  invokableAgents?: Agent[]
+  skipKeywordTriggers?: boolean
+  directAgentId?: string | null
   agentsGloballyPaused?: boolean
   memberId: string | null
   senderName: string
@@ -133,6 +139,9 @@ export function ThreadInline({
           workspaceId={workspaceId}
           defaultAgentId={defaultAgentId}
           agents={agents}
+          invokableAgents={invokableAgents}
+          skipKeywordTriggers={skipKeywordTriggers}
+          directAgentId={directAgentId}
           agentsGloballyPaused={agentsGloballyPaused}
           memberId={memberId}
           senderName={senderName}

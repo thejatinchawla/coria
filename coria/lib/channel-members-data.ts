@@ -9,7 +9,7 @@ export async function fetchChannelsForMember(
   const { data, error } = await supabase
     .from("channels")
     .select(
-      "id,workspace_id,name,slug,type,description,direct_agent_id,direct_peer_member_id,created_at, channel_members!inner(member_id)",
+      "id,workspace_id,name,slug,type,description,direct_agent_id,direct_peer_member_id,created_by_member_id,created_at, channel_members!inner(member_id)",
     )
     .eq("workspace_id", workspaceId)
     .eq("channel_members.member_id", memberId)

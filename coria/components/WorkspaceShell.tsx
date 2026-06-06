@@ -13,7 +13,7 @@ import { useRouter } from "next/navigation"
 import { AppShell } from "@/components/AppShell"
 import type { WorkspaceShellContext } from "@/lib/app-context"
 import { writeStoredChannelSlug } from "@/lib/channel-slug"
-import { chatUrl } from "@/lib/settings-url"
+import { chatUrlForChannel } from "@/lib/settings-url"
 import type { Agent, Channel, Member, MemberRole } from "@/types"
 
 type ChatBridge = {
@@ -118,7 +118,7 @@ export function WorkspaceShell({
         chatBridgeRef.current.onChannelSelect(channel)
         return
       }
-      router.push(chatUrl(channel.slug))
+      router.push(chatUrlForChannel(channel, currentMember.id))
     },
     [router],
   )

@@ -15,6 +15,8 @@ import {
 import { streamActionBlockDecision } from "@/lib/stream-invoke"
 import Link from "next/link"
 import { syncChatUrl, settingsUrl } from "@/lib/settings-url"
+import { writeStoredChatLocation } from "@/lib/channel-slug"
+import { chatLocationFromChannel } from "@/lib/chat-location"
 import type {
   ActionBlock,
   Agent,
@@ -39,6 +41,7 @@ import { useIsMobile } from "@/components/ThreadInline"
 import { useToast } from "@/components/Toast"
 import { useConfirm } from "@/components/ConfirmDialog"
 import { AgentFtue } from "@/components/AgentFtue"
+import { isMemberDirectMessage } from "@/lib/direct-messages"
 
 type StreamState = {
   content: string
@@ -108,6 +111,13 @@ export function Chat({
     messagesRef.current = messages
   }, [activeChannel, messages])
 
+  useEffect(() => {
+    setActiveChannelSlug(channel.slug)
+    const location = chatLocationFromChannel(channel, memberId)
+    writeStoredChatLocation(location)
+    syncChatUrl(channel, memberId)
+  }, [channel.id, channel.slug, memberId, setActiveChannelSlug])
+
   const resetChannelViewState = useCallback(() => {
     setExpandedThreadId(null)
     setMobileThreadRoot(null)
@@ -131,7 +141,9 @@ export function Chat({
 
       setActiveChannelSlug(next.slug)
       if (options?.syncUrl !== false) {
-        syncChatUrl(next.slug)
+        const location = chatLocationFromChannel(next, memberId)
+        writeStoredChatLocation(location)
+        syncChatUrl(next, memberId)
       }
 
       const cached = messageCacheRef.current[next.id]
@@ -154,7 +166,7 @@ export function Chat({
         )
       }
     },
-    [resetChannelViewState, setActiveChannelSlug, setSwitchingChannelId],
+    [memberId, resetChannelViewState, setActiveChannelSlug, setSwitchingChannelId],
   )
 
   const agentsById = useMemo(
@@ -164,6 +176,7 @@ export function Chat({
   const [membersById, setMembersById] = useState<Record<string, Member>>({})
   const [channelMembers, setChannelMembers] = useState<Member[]>([])
   const [channelMembersLoaded, setChannelMembersLoaded] = useState(false)
+  const [channelAgents, setChannelAgents] = useState<Agent[]>([])
 
   useEffect(() => {
     const supabase = createClient()
@@ -209,16 +222,57 @@ export function Chat({
     [],
   )
 
+  const loadChannelAgents = useCallback(async () => {
+    if (!isMemberDirectMessage(activeChannel)) {
+      setChannelAgents([])
+      return
+    }
+    const res = await fetch(`/api/channels/${activeChannel.id}/agents`)
+    if (!res.ok) {
+      setChannelAgents([])
+      return
+    }
+    const json = (await res.json()) as { agents?: Agent[] }
+    setChannelAgents(json.agents ?? [])
+  }, [activeChannel])
+
   useEffect(() => {
     void loadChannelMembers()
   }, [loadChannelMembers])
 
+  useEffect(() => {
+    void loadChannelAgents()
+  }, [loadChannelAgents])
+
+  const isMemberDm = isMemberDirectMessage(activeChannel)
+
+  const invokableAgents = useMemo(() => {
+    if (activeChannel.direct_agent_id) {
+      const agent = agents.find((a) => a.id === activeChannel.direct_agent_id)
+      return agent ? [agent] : []
+    }
+    if (isMemberDm) {
+      return channelAgents.filter((a) => a.status === "active")
+    }
+    return agents.filter((a) => a.status === "active")
+  }, [activeChannel.direct_agent_id, agents, channelAgents, isMemberDm])
+
   const channelMemberCount = useMemo(() => {
     const humans = channelMembers.length
     const agentCount =
-      activeChannel.type === "hybrid" ? agents.length : 0
+      activeChannel.type === "hybrid"
+        ? agents.length
+        : isMemberDm
+          ? channelAgents.length
+          : 0
     return humans + agentCount
-  }, [channelMembers.length, activeChannel.type, agents.length])
+  }, [
+    channelMembers.length,
+    activeChannel.type,
+    agents.length,
+    isMemberDm,
+    channelAgents.length,
+  ])
   const agentsGloballyPaused = workspaceSettings?.agents_globally_paused ?? false
 
   const topLevelMessages = useMemo(
@@ -621,10 +675,12 @@ export function Chat({
       setActiveChannel(updated)
       if (updated.slug !== previousSlug) {
         setActiveChannelSlug(updated.slug)
-        syncChatUrl(updated.slug)
+        const loc = chatLocationFromChannel(updated, memberId)
+        writeStoredChatLocation(loc)
+        syncChatUrl(updated, memberId)
       }
     },
-    [setActiveChannelSlug],
+    [memberId, setActiveChannelSlug],
   )
 
   const canManageChannels =
@@ -777,6 +833,9 @@ export function Chat({
     workspaceId,
     defaultAgentId: agentId,
     agents,
+    invokableAgents,
+    skipKeywordTriggers: isMemberDm,
+    directAgentId: activeChannel.direct_agent_id,
     agentsGloballyPaused,
     memberId,
     senderName: userDisplayName,
@@ -907,6 +966,8 @@ export function Chat({
               workspaceId={workspaceId}
               defaultAgentId={agentId}
               agents={agents}
+              invokableAgents={invokableAgents}
+              skipKeywordTriggers={isMemberDm}
               agentsGloballyPaused={agentsGloballyPaused}
               memberId={memberId}
               senderName={userDisplayName}
@@ -917,12 +978,14 @@ export function Chat({
               onActionBlock={handleActionBlock}
               onMessageSent={handleMessageSent}
             />
-            <AgentFtue
-              agents={agents}
-              memberId={memberId}
-              workspaceId={workspaceId}
-              onTryExample={setComposerPrefill}
-            />
+            {!isMemberDm && (
+              <AgentFtue
+                agents={agents}
+                memberId={memberId}
+                workspaceId={workspaceId}
+                onTryExample={setComposerPrefill}
+              />
+            )}
           </div>
           <div
             className={
@@ -952,12 +1015,14 @@ export function Chat({
               workspaceId={workspaceId}
               channelSlug={activeChannel.slug}
               members={channelMembers}
-              agents={agents}
+              agents={isMemberDm ? channelAgents : agents}
               channelType={activeChannel.type}
               memberRole={memberRole}
               currentMemberId={memberId}
               loading={!channelMembersLoaded}
+              isMemberDirect={isMemberDm}
               onMembersChange={setChannelMembers}
+              onAgentsChange={setChannelAgents}
             />
           </div>
         </div>
@@ -981,6 +1046,9 @@ export function Chat({
           workspaceId={workspaceId}
           defaultAgentId={agentId}
           agents={agents}
+          invokableAgents={invokableAgents}
+          skipKeywordTriggers={isMemberDm}
+          directAgentId={activeChannel.direct_agent_id}
           agentsGloballyPaused={agentsGloballyPaused}
           memberId={memberId}
           senderName={userDisplayName}

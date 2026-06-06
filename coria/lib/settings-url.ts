@@ -1,21 +1,36 @@
 import type { SettingsId } from "@/lib/settings-links"
+import {
+  buildChatUrl,
+  chatLocationFromChannel,
+  syncChatLocation,
+  type ChatLocation,
+} from "@/lib/chat-location"
+import type { Channel } from "@/types"
 
 export function chatUrl(channelSlug: string): string {
-  return `/?channel=${encodeURIComponent(channelSlug)}`
+  return buildChatUrl({ kind: "channel", slug: channelSlug })
+}
+
+export function chatUrlForChannel(
+  channel: Channel,
+  currentMemberId: string | null,
+): string {
+  return buildChatUrl(chatLocationFromChannel(channel, currentMemberId))
 }
 
 export function settingsUrl(section: SettingsId): string {
   return `/settings/${section}`
 }
 
-/** Update the chat channel in the address bar without a full navigation. */
-export function syncChatUrl(channelSlug: string) {
-  if (typeof window === "undefined") return
-  const next = chatUrl(channelSlug)
-  if (`${window.location.pathname}${window.location.search}` !== next) {
-    window.history.replaceState(window.history.state, "", next)
-  }
+/** Update the address bar for the active chat (channel, teammate DM, or agent DM). */
+export function syncChatUrl(
+  channel: Channel,
+  currentMemberId: string | null,
+) {
+  syncChatLocation(chatLocationFromChannel(channel, currentMemberId))
 }
+
+export { buildChatUrl, syncChatLocation, type ChatLocation }
 
 export function settingsRedirectPath(id: SettingsId): string {
   return settingsUrl(id)

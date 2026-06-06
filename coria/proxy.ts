@@ -65,13 +65,24 @@ export async function proxy(request: NextRequest) {
       return NextResponse.redirect(url)
     }
 
-    const channel = request.nextUrl.searchParams.get("channel")?.trim()
-    if (channel && pathname === "/") {
-      supabaseResponse.cookies.set("coria_last_channel", channel, {
-        path: "/",
-        sameSite: "lax",
-        maxAge: 60 * 60 * 24 * 365,
-      })
+    if (pathname === "/") {
+      const dm = request.nextUrl.searchParams.get("dm")?.trim()
+      const agent = request.nextUrl.searchParams.get("agent")?.trim()
+      const channel = request.nextUrl.searchParams.get("channel")?.trim()
+      const stored = dm
+        ? `dm:${dm}`
+        : agent
+          ? `agent:${agent}`
+          : channel
+            ? `channel:${channel}`
+            : null
+      if (stored) {
+        supabaseResponse.cookies.set("coria_last_channel", stored, {
+          path: "/",
+          sameSite: "lax",
+          maxAge: 60 * 60 * 24 * 365,
+        })
+      }
     }
 
     // Do not auto-redirect authenticated users away from /login here.

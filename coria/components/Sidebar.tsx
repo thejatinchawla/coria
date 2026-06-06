@@ -6,7 +6,7 @@ import { LogOut, Plus, Settings, Trash2, X } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase"
 import { slugifyChannelName } from "@/lib/workspace"
-import { chatUrl, settingsUrl } from "@/lib/settings-url"
+import { chatUrlForChannel, settingsUrl } from "@/lib/settings-url"
 import type { Agent, Channel, Member, MemberRole, Workspace } from "@/types"
 import {
   directTargetActive,
@@ -236,7 +236,7 @@ export function Sidebar({
       if (onChannelSelect) {
         onChannelSelect(channel)
       } else {
-        router.push(chatUrl(channel.slug))
+        router.push(chatUrlForChannel(channel, currentMemberId))
       }
       onClose()
     } finally {
@@ -314,7 +314,7 @@ export function Sidebar({
                     if (onChannelSelect) {
                       onChannelSelect(ch)
                     } else {
-                      router.push(chatUrl(ch.slug))
+                      router.push(chatUrlForChannel(ch, currentMemberId))
                     }
                     onClose()
                   }}
@@ -393,10 +393,11 @@ export function Sidebar({
                 Direct messages
               </p>
               {dmAgents.map((agent) => {
-                const active = directTargetActive(activeChannel, {
-                  kind: "agent",
-                  id: agent.id,
-                })
+                const active = directTargetActive(
+                  activeChannel,
+                  { kind: "agent", id: agent.id },
+                  currentMemberId,
+                )
                 const loading = openingDmKey === `agent:${agent.id}`
                 return (
                   <Button
@@ -428,10 +429,11 @@ export function Sidebar({
                 )
               })}
               {dmMembers.map((member) => {
-                const active = directTargetActive(activeChannel, {
-                  kind: "member",
-                  id: member.id,
-                })
+                const active = directTargetActive(
+                  activeChannel,
+                  { kind: "member", id: member.id },
+                  currentMemberId,
+                )
                 const loading = openingDmKey === `member:${member.id}`
                 return (
                   <Button
