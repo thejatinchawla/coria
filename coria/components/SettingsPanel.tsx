@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import type {
   Agent,
   AgentTrigger,
@@ -314,20 +314,20 @@ function WorkspaceSettingsLoader() {
   )
 }
 
-export function SettingsPanel({
-  section,
+function SettingsSectionPanel({
+  id,
   agents,
   channels,
   memberRole,
+  canManageLlm,
 }: {
-  section: SettingsId
+  id: SettingsId
   agents: Agent[]
   channels: Channel[]
   memberRole: MemberRole
+  canManageLlm: boolean
 }) {
-  const canManageLlm = memberRole === "owner" || memberRole === "admin"
-
-  switch (section) {
+  switch (id) {
     case "workspace":
       return <WorkspaceSettingsLoader />
     case "profile":
@@ -343,4 +343,41 @@ export function SettingsPanel({
     case "audit":
       return <AuditSettingsLoader agents={agents} />
   }
+}
+
+export function SettingsPanel({
+  section,
+  agents,
+  channels,
+  memberRole,
+}: {
+  section: SettingsId
+  agents: Agent[]
+  channels: Channel[]
+  memberRole: MemberRole
+}) {
+  const canManageLlm = memberRole === "owner" || memberRole === "admin"
+  const [visited, setVisited] = useState<SettingsId[]>(() => [section])
+
+  useEffect(() => {
+    setVisited((prev) => (prev.includes(section) ? prev : [...prev, section]))
+  }, [section])
+
+  const panels = useMemo(
+    () =>
+      visited.map((id) => (
+        <div key={id} hidden={id !== section}>
+          <SettingsSectionPanel
+            id={id}
+            agents={agents}
+            channels={channels}
+            memberRole={memberRole}
+            canManageLlm={canManageLlm}
+          />
+        </div>
+      )),
+    [visited, section, agents, channels, memberRole, canManageLlm],
+  )
+
+  return <>{panels}</>
 }

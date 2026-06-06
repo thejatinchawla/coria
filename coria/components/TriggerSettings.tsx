@@ -304,7 +304,8 @@ export function TriggerSettings({
                   <Button
                     variant="ghost"
                     size="sm"
-                    disabled={saving || runningId === trigger.id}
+                    loading={runningId === trigger.id}
+                    disabled={saving}
                     onClick={() => void runNow(trigger.id)}
                   >
                     <Play className="mr-1 size-3.5" />
@@ -313,7 +314,7 @@ export function TriggerSettings({
                   <Button
                     variant="ghost"
                     size="sm"
-                    disabled={saving}
+                    loading={saving}
                     onClick={() => void toggleEnabled(trigger)}
                   >
                     {trigger.enabled ? "Disable" : "Enable"}
@@ -321,7 +322,7 @@ export function TriggerSettings({
                   <Button
                     variant="ghost"
                     size="sm"
-                    disabled={saving}
+                    loading={saving}
                     onClick={() => startEdit(trigger)}
                   >
                     Edit
@@ -330,7 +331,7 @@ export function TriggerSettings({
                     variant="ghost"
                     size="icon"
                     className="size-8 text-destructive"
-                    disabled={saving}
+                    loading={saving}
                     aria-label="Delete trigger"
                     onClick={() => void deleteTrigger(trigger.id)}
                   >
@@ -516,7 +517,7 @@ export function TriggerSettings({
           )}
 
           <div className="flex gap-2">
-            <Button type="submit" disabled={saving}>
+            <Button type="submit" loading={saving}>
               {editingId ? "Save changes" : "Create trigger"}
             </Button>
             <Button

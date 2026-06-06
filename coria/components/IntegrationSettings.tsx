@@ -115,7 +115,7 @@ export function IntegrationSettings({
               variant="ghost"
               size="icon"
               className="size-8 shrink-0"
-              disabled={saving}
+              loading={saving}
               aria-label="Edit GitHub integration"
               onClick={() => setEditing(true)}
             >
@@ -143,14 +143,14 @@ export function IntegrationSettings({
                 />
               </label>
               <div className="flex flex-wrap gap-2">
-                <Button type="submit" disabled={saving}>
+                <Button type="submit" loading={saving}>
                   {connected ? "Update token" : "Connect GitHub"}
                 </Button>
                 {connected && editing && (
                   <Button
                     type="button"
                     variant="ghost"
-                    disabled={saving}
+                    loading={saving}
                     onClick={() => {
                       setEditing(false)
                       setPat("")
@@ -167,7 +167,7 @@ export function IntegrationSettings({
                 type="button"
                 variant="outline"
                 size="sm"
-                disabled={saving}
+                loading={saving}
                 onClick={() => void disconnect()}
               >
                 <Unplug className="mr-1 size-3.5" />

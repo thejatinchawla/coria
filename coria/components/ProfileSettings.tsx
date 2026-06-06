@@ -93,10 +93,10 @@ export function ProfileSettings({
               type="button"
               variant="outline"
               size="sm"
-              disabled={uploading}
+              loading={uploading}
               onClick={() => fileRef.current?.click()}
             >
-              {uploading ? "Uploading…" : "Upload avatar"}
+              Upload avatar
             </Button>
             <p className="text-xs text-muted-foreground">
               Or paste an image URL below. Role: {profile.role}
@@ -141,7 +141,7 @@ export function ProfileSettings({
           <p className="text-xs text-muted-foreground">Email: {profile.email}</p>
         )}
 
-        <Button type="button" disabled={saving} onClick={() => void save()}>
+        <Button type="button" loading={saving} onClick={() => void save()}>
           Save profile
         </Button>
       </section>

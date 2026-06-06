@@ -358,6 +358,7 @@ export function MessageInput({
           <Button
             type="submit"
             size="icon"
+            loading={sending}
             disabled={!canSend}
             aria-label="Send message"
             className="size-9 shrink-0"

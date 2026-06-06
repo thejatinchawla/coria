@@ -157,7 +157,7 @@ export function MemberSettings({
             {isOwner && <option value="owner">Owner</option>}
           </select>
         </div>
-        <Button type="submit" size="sm" disabled={saving}>
+        <Button type="submit" size="sm" loading={saving}>
           <UserPlus className="mr-1 size-3.5" />
           Send invite
         </Button>
@@ -202,7 +202,7 @@ export function MemberSettings({
                       variant="ghost"
                       size="icon"
                       className="size-8 text-destructive"
-                      disabled={saving}
+                      loading={saving}
                       aria-label="Remove member"
                       onClick={() => void removeMember(m.id)}
                     >
@@ -238,7 +238,7 @@ export function MemberSettings({
                   variant="ghost"
                   size="sm"
                   className="shrink-0 text-destructive hover:text-destructive"
-                  disabled={saving}
+                  loading={saving}
                   onClick={() => void revokeInvite(inv.id)}
                 >
                   <Trash2 className="mr-1 size-3.5" />

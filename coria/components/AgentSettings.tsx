@@ -172,7 +172,7 @@ export function AgentSettings({
             <Button
               variant={settings.agents_globally_paused ? "destructive" : "outline"}
               size="sm"
-              disabled={saving}
+              loading={saving}
               onClick={() =>
                 void patchSettings({
                   agents_globally_paused: !settings.agents_globally_paused,
@@ -216,7 +216,7 @@ export function AgentSettings({
                 <Button
                   variant="ghost"
                   size="sm"
-                  disabled={saving}
+                  loading={saving}
                   onClick={() => void patchSettings({ tool_budget_used: 0 })}
                 >
                   Reset
@@ -276,7 +276,7 @@ export function AgentSettings({
                   variant="ghost"
                   size="icon"
                   className="size-8"
-                  disabled={saving}
+                  loading={saving}
                   aria-label={agent.status === "paused" ? "Resume agent" : "Pause agent"}
                   onClick={() =>
                     void patchAgent(agent.id, {
@@ -293,7 +293,7 @@ export function AgentSettings({
                 <Button
                   variant="ghost"
                   size="sm"
-                  disabled={saving}
+                  loading={saving}
                   onClick={() => startEdit(agent)}
                 >
                   Edit
@@ -390,7 +390,7 @@ export function AgentSettings({
             />
           </label>
           <div className="flex gap-2">
-            <Button type="submit" disabled={saving}>
+            <Button type="submit" loading={saving}>
               {editingId ? "Save changes" : "Create agent"}
             </Button>
             <Button

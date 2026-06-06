@@ -6,7 +6,7 @@ import { LogOut, Plus, Settings, Trash2, X } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase"
 import { slugifyChannelName } from "@/lib/workspace"
-import { chatUrl } from "@/lib/settings-url"
+import { chatUrl, settingsUrl } from "@/lib/settings-url"
 import type { Channel, MemberRole, Workspace } from "@/types"
 import { Button } from "@/components/ui/button"
 import { LoadingButton } from "@/components/ui/loading-button"
@@ -28,12 +28,14 @@ export function Sidebar({
   workspaces,
   channels,
   activeChannelSlug,
+  switchingChannelId = null,
   workspaceId,
   displayName,
   email,
   memberRole,
   open,
   onClose,
+  onChannelSelect,
   onChannelCreated,
   onChannelDeleted,
   settingsSection = null,
@@ -41,12 +43,14 @@ export function Sidebar({
   workspaces: Workspace[]
   channels: Channel[]
   activeChannelSlug: string
+  switchingChannelId?: string | null
   workspaceId: string
   displayName: string
   email: string
   memberRole: MemberRole
   open: boolean
   onClose: () => void
+  onChannelSelect?: (channel: Channel) => void
   onChannelCreated?: (channel: Channel) => void
   onChannelDeleted?: (channelId: string, fallbackChannel: Channel) => void
   settingsSection?: string | null
@@ -61,6 +65,7 @@ export function Sidebar({
   const [width, setWidth] = useState(DEFAULT_SIDEBAR_WIDTH)
   const [resizing, setResizing] = useState(false)
   const [deletingChannelId, setDeletingChannelId] = useState<string | null>(null)
+  const [signingOut, setSigningOut] = useState(false)
   const widthRef = useRef(DEFAULT_SIDEBAR_WIDTH)
   const canManageChannels = memberRole === "owner" || memberRole === "admin"
 
@@ -103,10 +108,15 @@ export function Sidebar({
   }, [])
 
   async function signOut() {
-    const supabase = createClient()
-    await supabase.auth.signOut()
-    router.push("/login")
-    router.refresh()
+    setSigningOut(true)
+    try {
+      const supabase = createClient()
+      await supabase.auth.signOut()
+      router.push("/login")
+      router.refresh()
+    } finally {
+      setSigningOut(false)
+    }
   }
 
   async function createChannel(e: React.FormEvent) {
@@ -175,9 +185,6 @@ export function Sidebar({
       }
       toast(`#${channel.name} deleted.`, "success")
       onChannelDeleted?.(channel.id, json.fallback_channel!)
-      if (activeChannelSlug === channel.slug) {
-        router.push(`/?channel=${json.fallback_channel!.slug}`)
-      }
     } finally {
       setDeletingChannelId(null)
     }
@@ -220,8 +227,8 @@ export function Sidebar({
 
         <nav className="flex flex-1 flex-col gap-1 overflow-y-auto p-2">
           {channels.map((ch) => {
-            const href = `/?channel=${ch.slug}`
             const active = activeChannelSlug === ch.slug
+            const switching = switchingChannelId === ch.id
             return (
               <div
                 key={ch.id}
@@ -230,28 +237,40 @@ export function Sidebar({
                   active && "bg-sidebar-accent",
                 )}
               >
-                <Link
-                  href={href}
-                  onClick={onClose}
+                <Button
+                  type="button"
+                  variant="ghost"
+                  loading={switching}
+                  disabled={Boolean(switchingChannelId) && !switching}
+                  onClick={() => {
+                    if (onChannelSelect) {
+                      onChannelSelect(ch)
+                    } else {
+                      router.push(chatUrl(ch.slug))
+                    }
+                    onClose()
+                  }}
                   className={cn(
-                    "min-w-0 flex-1 rounded-md px-3 py-2 text-left text-sm font-medium transition-colors hover:bg-sidebar-accent",
+                    "h-auto min-w-0 flex-1 justify-start rounded-md px-3 py-2 text-left text-sm font-medium hover:bg-sidebar-accent",
                     active
                       ? "text-sidebar-accent-foreground"
                       : "text-sidebar-foreground",
                   )}
                 >
                   # {ch.name}
-                </Link>
+                </Button>
                 {canManageChannels && channels.length > 1 && (
-                  <button
+                  <Button
                     type="button"
+                    variant="ghost"
+                    size="icon-xs"
                     aria-label={`Delete #${ch.name}`}
-                    disabled={deletingChannelId === ch.id}
+                    loading={deletingChannelId === ch.id}
                     onClick={() => void deleteChannel(ch)}
-                    className="mr-1 rounded-md p-1.5 text-muted-foreground opacity-100 transition-opacity hover:bg-sidebar-accent hover:text-destructive md:opacity-0 md:group-hover/channel:opacity-100 disabled:opacity-50"
+                    className="mr-1 text-muted-foreground opacity-100 hover:text-destructive md:opacity-0 md:group-hover/channel:opacity-100"
                   >
                     <Trash2 className="size-3.5" />
-                  </button>
+                  </Button>
                 )}
               </div>
             )
@@ -303,8 +322,7 @@ export function Sidebar({
 
         <div className="border-t border-sidebar-border p-2">
           <Link
-            href={chatUrl(activeChannelSlug, "profile")}
-            scroll={false}
+            href={settingsUrl("profile")}
             onClick={onClose}
             className={cn(
               "flex items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
@@ -326,6 +344,7 @@ export function Sidebar({
           <Button
             variant="ghost"
             size="sm"
+            loading={signingOut}
             onClick={() => void signOut()}
             className="w-full justify-start gap-2 text-muted-foreground"
           >

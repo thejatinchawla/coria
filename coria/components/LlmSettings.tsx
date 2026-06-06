@@ -265,7 +265,7 @@ export function LlmSettings({
                 type="button"
                 variant="outline"
                 size="sm"
-                disabled={saving}
+                loading={saving}
                 onClick={() => void removeCustomKey()}
               >
                 Remove stored API key

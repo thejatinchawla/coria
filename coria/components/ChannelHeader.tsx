@@ -1,7 +1,6 @@
 "use client"
 
 import { useState } from "react"
-import Link from "next/link"
 import {
   Menu,
   MessageSquare,
@@ -13,8 +12,9 @@ import {
 } from "lucide-react"
 import type { MessageSearchHit } from "@/types"
 import { cn } from "@/lib/utils"
-import { chatUrl } from "@/lib/settings-url"
-import type { SettingsId } from "@/lib/settings-links"
+import Link from "next/link"
+import { useSidebarMenu } from "@/components/AppShell"
+import { settingsUrl } from "@/lib/settings-url"
 
 export type ChannelTab = "messages" | "pins"
 
@@ -80,7 +80,6 @@ export function ChannelHeader({
   onSearchChange,
   onSearchSelect,
   onMenuOpen,
-  settingsSection = null,
 }: {
   channelName: string
   channelSlug: string
@@ -94,9 +93,9 @@ export function ChannelHeader({
   searchResults?: MessageSearchHit[]
   onSearchChange?: (query: string) => void
   onSearchSelect?: (hit: MessageSearchHit) => void
-  onMenuOpen: () => void
-  settingsSection?: SettingsId | null
+  onMenuOpen?: () => void
 }) {
+  const { openSidebar } = useSidebarMenu()
   const [searchOpen, setSearchOpen] = useState(false)
 
   const subtitle =
@@ -112,7 +111,7 @@ export function ChannelHeader({
           <button
             type="button"
             aria-label="Open menu"
-            onClick={onMenuOpen}
+            onClick={onMenuOpen ?? openSidebar}
             className="-ml-1 shrink-0 rounded-md p-2 text-muted-foreground hover:bg-muted md:hidden"
           >
             <Menu className="size-5" />
@@ -150,15 +149,9 @@ export function ChannelHeader({
             <Search className="size-5" />
           </button>
           <Link
-            href={chatUrl(channelSlug, "agents")}
-            scroll={false}
-            className={cn(
-              "rounded-md p-2 hover:bg-muted",
-              settingsSection === "agents"
-                ? "bg-muted text-foreground"
-                : "text-muted-foreground",
-            )}
-            aria-label="Agent settings"
+            href={settingsUrl("agents")}
+            className="rounded-md p-2 text-muted-foreground hover:bg-muted"
+            aria-label="Settings"
           >
             <Settings className="size-5" />
           </Link>

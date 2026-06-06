@@ -3,6 +3,25 @@ import type { MemberRole, Message, MessageSearchHit } from "@/types"
 
 export const MAX_PINNED_MESSAGES = 5
 
+export async function fetchChannelMessages(
+  supabase: SupabaseClient,
+  channelId: string,
+): Promise<Message[]> {
+  const { data, error } = await supabase
+    .from("messages")
+    .select("*")
+    .eq("channel_id", channelId)
+    .is("thread_id", null)
+    .order("created_at", { ascending: true })
+
+  if (error) {
+    console.error("[messages] fetchChannelMessages:", error.message)
+    return []
+  }
+
+  return (data as Message[]) ?? []
+}
+
 export async function fetchThreadReplies(
   supabase: SupabaseClient,
   threadId: string,

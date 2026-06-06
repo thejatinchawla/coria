@@ -1,13 +1,20 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
-import Link from "next/link"
-import { useRouter } from "next/navigation"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { createClient } from "@/lib/supabase"
-import { fetchThreadReplies, fetchPinnedMessages, searchChannelMessages, setMessagePinned, canDeleteMessage, deleteMessage, MAX_PINNED_MESSAGES } from "@/lib/messages"
+import {
+  fetchChannelMessages,
+  fetchThreadReplies,
+  fetchPinnedMessages,
+  searchChannelMessages,
+  setMessagePinned,
+  canDeleteMessage,
+  deleteMessage,
+  MAX_PINNED_MESSAGES,
+} from "@/lib/messages"
 import { streamActionBlockDecision } from "@/lib/stream-invoke"
-import { chatUrl } from "@/lib/settings-url"
-import type { SettingsId } from "@/lib/settings-links"
+import Link from "next/link"
+import { syncChatUrl, settingsUrl } from "@/lib/settings-url"
 import type {
   ActionBlock,
   Agent,
@@ -24,8 +31,7 @@ import { MessageList } from "@/components/MessageList"
 import { PinsView } from "@/components/PinsView"
 import type { ChannelTab } from "@/components/ChannelHeader"
 import { MessageInput } from "@/components/MessageInput"
-import { SettingsModal } from "@/components/SettingsModal"
-import { Sidebar } from "@/components/Sidebar"
+import { useWorkspaceShell } from "@/components/WorkspaceShell"
 import { ThreadView } from "@/components/ThreadView"
 import { useIsMobile } from "@/components/ThreadInline"
 import { useToast } from "@/components/Toast"
@@ -41,10 +47,8 @@ type StreamState = {
 
 export function Chat({
   workspace,
-  workspaces,
   memberRole,
   channel,
-  channels,
   agentId,
   agents,
   workspaceSettings,
@@ -53,13 +57,10 @@ export function Chat({
   initialMessages,
   userEmail,
   userDisplayName,
-  settingsSection,
 }: {
   workspace: Workspace
-  workspaces: Workspace[]
   memberRole: MemberRole
   channel: Channel
-  channels: Channel[]
   agentId: string
   agents: Agent[]
   workspaceSettings: WorkspaceSettings | null
@@ -68,18 +69,27 @@ export function Chat({
   initialMessages: Message[]
   userEmail: string
   userDisplayName: string
-  settingsSection: SettingsId | null
 }) {
-  const router = useRouter()
   const { toast } = useToast()
   const { confirm } = useConfirm()
   const isMobile = useIsMobile()
-  const [messages, setMessages] = useState<Message[]>(initialMessages)
-  const [channelList, setChannelList] = useState(channels)
+  const {
+    shell,
+    setActiveChannelSlug,
+    setSwitchingChannelId,
+    registerChatBridge,
+  } = useWorkspaceShell()
+  const channelList = shell.channels
+  const [activeChannel, setActiveChannel] = useState(channel)
+  const [messages, setMessages] = useState(initialMessages)
+  const activeChannelRef = useRef(activeChannel)
+  const messagesRef = useRef(messages)
+  const messageCacheRef = useRef<Record<string, Message[]>>({
+    [channel.id]: initialMessages,
+  })
   const [streamState, setStreamState] = useState<StreamState | null>(null)
   const [pendingBlocks, setPendingBlocks] = useState<ActionBlock[]>([])
   const [decidingBlockId, setDecidingBlockId] = useState<string | null>(null)
-  const [sidebarOpen, setSidebarOpen] = useState(false)
   const [expandedThreadId, setExpandedThreadId] = useState<string | null>(null)
   const [mobileThreadRoot, setMobileThreadRoot] = useState<Message | null>(null)
   const [threadReplies, setThreadReplies] = useState<Record<string, Message[]>>(
@@ -93,6 +103,57 @@ export function Chat({
   const [pinnedMessages, setPinnedMessages] = useState<Message[]>([])
   const [channelTab, setChannelTab] = useState<ChannelTab>("messages")
   const [composerPrefill, setComposerPrefill] = useState<string | null>(null)
+  activeChannelRef.current = activeChannel
+  messagesRef.current = messages
+
+  const resetChannelViewState = useCallback(() => {
+    setExpandedThreadId(null)
+    setMobileThreadRoot(null)
+    setThreadReplies({})
+    setSearchQuery("")
+    setSearchResults([])
+    setHighlightMessageId(null)
+    setPinnedMessages([])
+    setChannelTab("messages")
+    setStreamState(null)
+  }, [])
+
+  const switchChannel = useCallback(
+    async (next: Channel, options?: { syncUrl?: boolean }) => {
+      if (next.id === activeChannelRef.current.id) return
+
+      messageCacheRef.current[activeChannelRef.current.id] = messagesRef.current
+      activeChannelRef.current = next
+      resetChannelViewState()
+      setActiveChannel(next)
+
+      setActiveChannelSlug(next.slug)
+      if (options?.syncUrl !== false) {
+        syncChatUrl(next.slug)
+      }
+
+      const cached = messageCacheRef.current[next.id]
+      if (cached) {
+        setMessages(cached)
+        return
+      }
+
+      setSwitchingChannelId(next.id)
+      try {
+        const supabase = createClient()
+        const nextMessages = await fetchChannelMessages(supabase, next.id)
+        messageCacheRef.current[next.id] = nextMessages
+        if (activeChannelRef.current.id === next.id) {
+          setMessages(nextMessages)
+        }
+      } finally {
+        setSwitchingChannelId((current) =>
+          current === next.id ? null : current,
+        )
+      }
+    },
+    [resetChannelViewState, setActiveChannelSlug, setSwitchingChannelId],
+  )
 
   const agentsById = useMemo(
     () => Object.fromEntries(agents.map((a) => [a.id, a])),
@@ -110,11 +171,11 @@ export function Chat({
     const { data } = await supabase
       .from("action_blocks")
       .select("*")
-      .eq("channel_id", channel.id)
+      .eq("channel_id", activeChannel.id)
       .eq("status", "pending")
       .order("created_at", { ascending: true })
     setPendingBlocks((data as ActionBlock[] | null) ?? [])
-  }, [channel.id])
+  }, [activeChannel.id])
 
   const loadThread = useCallback(async (threadId: string) => {
     const supabase = createClient()
@@ -125,9 +186,9 @@ export function Chat({
 
   const loadPinnedMessages = useCallback(async () => {
     const supabase = createClient()
-    const pins = await fetchPinnedMessages(supabase, channel.id)
+    const pins = await fetchPinnedMessages(supabase, activeChannel.id)
     setPinnedMessages(pins)
-  }, [channel.id])
+  }, [activeChannel.id])
 
   const handleMessageSent = useCallback((message: Message) => {
     setMessages((prev) => {
@@ -265,26 +326,31 @@ export function Chat({
   )
 
   useEffect(() => {
+    setActiveChannel(channel)
     setMessages(initialMessages)
-    setExpandedThreadId(null)
-    setMobileThreadRoot(null)
-    setThreadReplies({})
-    setSearchQuery("")
-    setSearchResults([])
-    setHighlightMessageId(null)
-    setPinnedMessages([])
-    setChannelTab("messages")
-  }, [channel.id, initialMessages])
+    messageCacheRef.current[channel.id] = initialMessages
+    resetChannelViewState()
+    setActiveChannelSlug(channel.slug)
+  }, [channel.id, channel.slug, initialMessages, resetChannelViewState, setActiveChannelSlug])
 
   useEffect(() => {
-    setChannelList(channels)
-  }, [channels])
+    function onPopState() {
+      const params = new URLSearchParams(window.location.search)
+      const slug = params.get("channel")?.trim() || "general"
+      const nextChannel = channelList.find((c) => c.slug === slug)
+      if (nextChannel) {
+        void switchChannel(nextChannel, { syncUrl: false })
+      }
+    }
+    window.addEventListener("popstate", onPopState)
+    return () => window.removeEventListener("popstate", onPopState)
+  }, [channelList, switchChannel])
 
   useEffect(() => {
     setStreamState(null)
     void loadPendingBlocks()
     void loadPinnedMessages()
-  }, [channel.id, loadPendingBlocks, loadPinnedMessages])
+  }, [activeChannel.id, loadPendingBlocks, loadPinnedMessages])
 
   useEffect(() => {
     if (!highlightMessageId) return
@@ -309,7 +375,7 @@ export function Chat({
       setMessages((prev) => {
         const byId = new Map(prev.map((m) => [m.id, m]))
         for (const m of incoming) {
-          if (m.channel_id === channel.id) byId.set(m.id, m)
+          if (m.channel_id === activeChannel.id) byId.set(m.id, m)
         }
         return Array.from(byId.values()).sort((a, b) =>
           a.created_at.localeCompare(b.created_at),
@@ -368,14 +434,14 @@ export function Chat({
       }
 
       realtimeChannel = supabase
-        .channel(`messages-${channel.id}`)
+        .channel(`messages-${activeChannel.id}`)
         .on(
           "postgres_changes",
           {
             event: "INSERT",
             schema: "public",
             table: "messages",
-            filter: `channel_id=eq.${channel.id}`,
+            filter: `channel_id=eq.${activeChannel.id}`,
           },
           handleInsert,
         )
@@ -385,7 +451,7 @@ export function Chat({
             event: "UPDATE",
             schema: "public",
             table: "messages",
-            filter: `channel_id=eq.${channel.id}`,
+            filter: `channel_id=eq.${activeChannel.id}`,
           },
           (payload) => {
             const next = payload.new as Message
@@ -414,7 +480,7 @@ export function Chat({
             event: "DELETE",
             schema: "public",
             table: "messages",
-            filter: `channel_id=eq.${channel.id}`,
+            filter: `channel_id=eq.${activeChannel.id}`,
           },
           (payload) => {
             const removed = payload.old as Message
@@ -428,7 +494,7 @@ export function Chat({
             event: "*",
             schema: "public",
             table: "action_blocks",
-            filter: `channel_id=eq.${channel.id}`,
+            filter: `channel_id=eq.${activeChannel.id}`,
           },
           () => {
             if (active) void loadPendingBlocks()
@@ -442,7 +508,7 @@ export function Chat({
           const { data } = await supabase
             .from("messages")
             .select("*")
-            .eq("channel_id", channel.id)
+            .eq("channel_id", activeChannel.id)
             .is("thread_id", null)
             .order("created_at", { ascending: true })
           if (active && data) mergeTopLevel(data as Message[])
@@ -454,22 +520,13 @@ export function Chat({
       authSubscription.unsubscribe()
       if (realtimeChannel) supabase.removeChannel(realtimeChannel)
     }
-  }, [channel.id, loadPendingBlocks, loadPinnedMessages, applyMessageRemoved])
+  }, [activeChannel.id, loadPendingBlocks, loadPinnedMessages, applyMessageRemoved])
 
   useEffect(() => {
     if (!streamState) return
     const timeout = setTimeout(() => setStreamState(null), 120000)
     return () => clearTimeout(timeout)
   }, [streamState])
-
-  useEffect(() => {
-    if (!sidebarOpen) return
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setSidebarOpen(false)
-    }
-    document.addEventListener("keydown", onKeyDown)
-    return () => document.removeEventListener("keydown", onKeyDown)
-  }, [sidebarOpen])
 
   useEffect(() => {
     const q = searchQuery.trim()
@@ -480,25 +537,45 @@ export function Chat({
     const timer = setTimeout(() => {
       void (async () => {
         const supabase = createClient()
-        const hits = await searchChannelMessages(supabase, channel.id, q)
+        const hits = await searchChannelMessages(supabase, activeChannel.id, q)
         setSearchResults(hits)
       })()
     }, 250)
     return () => clearTimeout(timer)
-  }, [searchQuery, channel.id])
+  }, [searchQuery, activeChannel.id])
 
-  function handleChannelCreated(next: Channel) {
-    setChannelList((prev) =>
-      prev.some((c) => c.id === next.id) ? prev : [...prev, next],
-    )
-    router.push(`/?channel=${next.slug}`)
-    setSidebarOpen(false)
-  }
+  const handleChannelCreated = useCallback(
+    (next: Channel) => {
+      void switchChannel(next)
+    },
+    [switchChannel],
+  )
 
-  function handleChannelDeleted(channelId: string, _fallback: Channel) {
-    setChannelList((prev) => prev.filter((c) => c.id !== channelId))
-    setSidebarOpen(false)
-  }
+  const handleChannelDeleted = useCallback(
+    (channelId: string, fallback: Channel) => {
+      delete messageCacheRef.current[channelId]
+      if (activeChannelRef.current.id === channelId) {
+        void switchChannel(fallback)
+      }
+    },
+    [switchChannel],
+  )
+
+  useEffect(() => {
+    registerChatBridge({
+      onChannelSelect: (next) => {
+        void switchChannel(next)
+      },
+      onChannelCreated: handleChannelCreated,
+      onChannelDeleted: handleChannelDeleted,
+    })
+    return () => registerChatBridge(null)
+  }, [
+    registerChatBridge,
+    switchChannel,
+    handleChannelCreated,
+    handleChannelDeleted,
+  ])
 
   function handleActionBlock(block: ActionBlock) {
     setPendingBlocks((prev) => {
@@ -616,8 +693,8 @@ export function Chat({
   }
 
   const threadProps = {
-    channelId: channel.id,
-    channelSlug: channel.slug,
+    channelId: activeChannel.id,
+    channelSlug: activeChannel.slug,
     workspaceId,
     defaultAgentId: agentId,
     agents,
@@ -677,43 +754,11 @@ export function Chat({
   }
 
   return (
-    <div className="flex h-dvh overflow-hidden bg-background text-foreground">
-      <Sidebar
-        workspaces={workspaces}
-        channels={channelList}
-        activeChannelSlug={channel.slug}
-        displayName={userDisplayName}
-        email={userEmail}
-        workspaceId={workspace.id}
-        memberRole={memberRole}
-        open={sidebarOpen}
-        onClose={() => setSidebarOpen(false)}
-        onChannelCreated={handleChannelCreated}
-        onChannelDeleted={handleChannelDeleted}
-        settingsSection={settingsSection}
-      />
-      <div className="relative flex min-w-0 flex-1 flex-col">
-        {settingsSection && (
-            <SettingsModal
-              workspaceName={workspace.name}
-              channelSlug={channel.slug}
-              section={
-                settingsSection === "workspace" &&
-                memberRole !== "owner" &&
-                memberRole !== "admin"
-                  ? "profile"
-                  : settingsSection
-              }
-              memberRole={memberRole}
-              agents={agents}
-              channels={channelList}
-            />
-        )}
+    <>
         <ChannelHeader
-          channelName={channel.name}
-          channelSlug={channel.slug}
+          channelName={activeChannel.name}
+          channelSlug={activeChannel.slug}
           workspaceName={workspace.name}
-          settingsSection={settingsSection}
           activeTab={channelTab}
           pinnedCount={pinnedMessages.length}
           onTabChange={setChannelTab}
@@ -726,14 +771,12 @@ export function Chat({
             setSearchQuery("")
             setSearchResults([])
           }}
-          onMenuOpen={() => setSidebarOpen(true)}
         />
         {agentsGloballyPaused && (
           <div className="shrink-0 border-b bg-destructive/10 px-4 py-2 text-center text-sm text-destructive">
             All agents are paused for this workspace. Resume in{" "}
             <Link
-              href={chatUrl(channel.slug, "agents")}
-              scroll={false}
+              href={settingsUrl("agents")}
               className="underline underline-offset-2"
             >
               settings
@@ -741,10 +784,15 @@ export function Chat({
             .
           </div>
         )}
-        <div className="flex min-h-0 flex-1 flex-col">
-          {channelTab === "messages" ? (
-            <>
-              <MessageList
+        <div className="relative flex min-h-0 flex-1 flex-col">
+          <div
+            className={
+              channelTab === "messages"
+                ? "flex min-h-0 flex-1 flex-col"
+                : "hidden"
+            }
+          >
+            <MessageList
               messages={topLevelMessages}
               streamState={streamState}
               streamingAgent={streamState?.agent}
@@ -768,8 +816,8 @@ export function Chat({
               onDecide={handleDecide}
             />
             <MessageInput
-              channelId={channel.id}
-              channelSlug={channel.slug}
+              channelId={activeChannel.id}
+              channelSlug={activeChannel.slug}
               workspaceId={workspaceId}
               defaultAgentId={agentId}
               agents={agents}
@@ -788,8 +836,12 @@ export function Chat({
               workspaceId={workspaceId}
               onTryExample={setComposerPrefill}
             />
-            </>
-          ) : (
+          </div>
+          <div
+            className={
+              channelTab === "pins" ? "flex min-h-0 flex-1 flex-col" : "hidden"
+            }
+          >
             <PinsView
               pins={pinnedMessages}
               agentsById={agentsById}
@@ -801,9 +853,8 @@ export function Chat({
                 void handlePinToggle(message, false)
               }}
             />
-          )}
+          </div>
         </div>
-      </div>
 
       {mobileThreadRoot && (
         <ThreadView
@@ -818,8 +869,8 @@ export function Chat({
               : null
           }
           agentsById={agentsById}
-          channelId={channel.id}
-          channelSlug={channel.slug}
+          channelId={activeChannel.id}
+          channelSlug={activeChannel.slug}
           workspaceId={workspaceId}
           defaultAgentId={agentId}
           agents={agents}
@@ -837,6 +888,6 @@ export function Chat({
           highlightMessageId={highlightMessageId}
         />
       )}
-    </div>
+    </>
   )
 }

@@ -35,7 +35,7 @@ export function ActionBlockCard({
         <div className="flex flex-wrap gap-2">
           <Button
             size="sm"
-            disabled={deciding}
+            loading={deciding}
             onClick={() => onDecide("approved")}
             className="gap-1.5"
           >
@@ -45,7 +45,7 @@ export function ActionBlockCard({
           <Button
             size="sm"
             variant="outline"
-            disabled={deciding}
+            loading={deciding}
             onClick={() => onDecide("declined")}
             className="gap-1.5"
           >

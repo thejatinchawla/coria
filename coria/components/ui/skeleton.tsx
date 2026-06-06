@@ -47,4 +47,17 @@ function ChatSkeleton() {
   )
 }
 
-export { Skeleton, SettingsPanelSkeleton, ChatSkeleton }
+function MainContentSkeleton() {
+  return (
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <Skeleton className="h-14 w-full shrink-0 rounded-none" />
+      <div className="flex-1 space-y-4 p-4">
+        <Skeleton className="h-16 w-2/3" />
+        <Skeleton className="h-16 w-1/2" />
+        <Skeleton className="h-16 w-3/5" />
+      </div>
+    </div>
+  )
+}
+
+export { Skeleton, SettingsPanelSkeleton, ChatSkeleton, MainContentSkeleton }
