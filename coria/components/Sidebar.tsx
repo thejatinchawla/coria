@@ -38,7 +38,7 @@ export function Sidebar({
   onChannelSelect,
   onChannelCreated,
   onChannelDeleted,
-  settingsSection = null,
+  settingsActive = false,
 }: {
   workspaces: Workspace[]
   channels: Channel[]
@@ -53,7 +53,7 @@ export function Sidebar({
   onChannelSelect?: (channel: Channel) => void
   onChannelCreated?: (channel: Channel) => void
   onChannelDeleted?: (channelId: string, fallbackChannel: Channel) => void
-  settingsSection?: string | null
+  settingsActive?: boolean
 }) {
   const router = useRouter()
   const { toast } = useToast()
@@ -133,16 +133,12 @@ export function Sidebar({
     setCreating(true)
     setCreateError(null)
     const supabase = createClient()
-    const { data, error } = await supabase
-      .from("channels")
-      .insert({
-        workspace_id: workspaceId,
-        name,
-        slug,
-        type: "hybrid",
-      })
-      .select("id,workspace_id,name,slug,type,description,created_at")
-      .single()
+    const { data, error } = await supabase.rpc("create_channel", {
+      p_workspace_id: workspaceId,
+      p_name: name,
+      p_slug: slug,
+      p_type: "hybrid",
+    })
 
     setCreating(false)
 
@@ -153,12 +149,25 @@ export function Sidebar({
 
     setNewName("")
     setShowCreate(false)
-    onChannelCreated?.(data as Channel)
+    const channel = data as Channel
+    onChannelCreated?.({
+      id: channel.id,
+      workspace_id: channel.workspace_id,
+      name: channel.name,
+      slug: channel.slug,
+      type: channel.type,
+      description: channel.description ?? null,
+      created_at: channel.created_at,
+    })
     onClose()
   }
 
   async function deleteChannel(channel: Channel) {
     if (!canManageChannels || deletingChannelId) return
+    if (channel.slug === "general") {
+      toast("Cannot delete #general — it is the default workspace channel.")
+      return
+    }
     if (channels.length <= 1) {
       toast("Cannot delete the last channel in a workspace.")
       return
@@ -259,7 +268,7 @@ export function Sidebar({
                 >
                   # {ch.name}
                 </Button>
-                {canManageChannels && channels.length > 1 && (
+                {canManageChannels && channels.length > 1 && ch.slug !== "general" && (
                   <Button
                     type="button"
                     variant="ghost"
@@ -326,7 +335,7 @@ export function Sidebar({
             onClick={onClose}
             className={cn(
               "flex items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-              settingsSection
+              settingsActive
                 ? "bg-sidebar-accent text-sidebar-accent-foreground"
                 : "text-muted-foreground",
             )}

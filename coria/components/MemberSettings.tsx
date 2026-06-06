@@ -165,6 +165,9 @@ export function MemberSettings({
 
       <section className="space-y-2">
         <h2 className="text-sm font-medium">Team ({members.length})</h2>
+        <p className="text-xs text-muted-foreground">
+          Owners and admins can change roles or remove members from the workspace.
+        </p>
         <ul className="space-y-2">
           {members.map((m) => (
             <li

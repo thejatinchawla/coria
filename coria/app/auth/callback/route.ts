@@ -66,16 +66,8 @@ export async function GET(request: NextRequest) {
   const next = request.nextUrl.searchParams.get("next")
   const destination = authRedirectDestination(next, type)
 
+  // PKCE verifier lives in browser cookies — exchange on /auth/confirm, not here.
   if (code) {
-    const response = NextResponse.redirect(`${baseOrigin}${destination}`)
-    const supabase = createSupabaseForResponse(request, response)
-    const { error } = await supabase.auth.exchangeCodeForSession(code)
-
-    if (!error) {
-      return response
-    }
-
-    console.error("[auth/callback] exchangeCodeForSession:", error.message)
     return clientConfirmFallback(baseOrigin, request)
   }
 

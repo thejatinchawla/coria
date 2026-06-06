@@ -9,6 +9,7 @@ import {
   Search,
   Settings,
   ShieldAlert,
+  Users,
   X,
 } from "lucide-react"
 import type { Channel, MessageSearchHit } from "@/types"
@@ -18,7 +19,7 @@ import Link from "next/link"
 import { useSidebarMenu } from "@/components/AppShell"
 import { settingsUrl } from "@/lib/settings-url"
 
-export type ChannelTab = "messages" | "pins"
+export type ChannelTab = "messages" | "pins" | "members"
 
 function ChannelTabButton({
   active,
@@ -75,6 +76,7 @@ export function ChannelHeader({
   onChannelUpdated,
   activeTab = "messages",
   pinnedCount = 0,
+  memberCount = 0,
   onTabChange,
   pendingApprovalCount = 0,
   searchQuery = "",
@@ -89,6 +91,7 @@ export function ChannelHeader({
   onChannelUpdated?: (channel: Channel) => void
   activeTab?: ChannelTab
   pinnedCount?: number
+  memberCount?: number
   onTabChange?: (tab: ChannelTab) => void
   pendingApprovalCount?: number
   searchQuery?: string
@@ -188,6 +191,13 @@ export function ChannelHeader({
             label="Pins"
             count={pinnedCount}
             onClick={() => onTabChange("pins")}
+          />
+          <ChannelTabButton
+            active={activeTab === "members"}
+            icon={Users}
+            label="Members"
+            count={memberCount}
+            onClick={() => onTabChange("members")}
           />
         </nav>
       )}

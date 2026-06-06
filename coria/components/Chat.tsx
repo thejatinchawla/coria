@@ -30,6 +30,7 @@ import { ActionBlockList } from "@/components/ActionBlock"
 import { ChannelHeader } from "@/components/ChannelHeader"
 import { MessageList } from "@/components/MessageList"
 import { PinsView } from "@/components/PinsView"
+import { ChannelMembersView } from "@/components/ChannelMembersView"
 import type { ChannelTab } from "@/components/ChannelHeader"
 import { MessageInput } from "@/components/MessageInput"
 import { useWorkspaceShell } from "@/components/WorkspaceShell"
@@ -162,6 +163,8 @@ export function Chat({
     [agents],
   )
   const [membersById, setMembersById] = useState<Record<string, Member>>({})
+  const [channelMembers, setChannelMembers] = useState<Member[]>([])
+  const [channelMembersLoaded, setChannelMembersLoaded] = useState(false)
 
   useEffect(() => {
     const supabase = createClient()
@@ -172,12 +175,41 @@ export function Chat({
           "id,workspace_id,user_id,display_name,role,avatar_url,bio,created_at",
         )
         .eq("workspace_id", workspaceId)
-      if (error || !data) return
-      setMembersById(
-        Object.fromEntries(data.map((member) => [member.id, member as Member])),
-      )
+      if (!error && data) {
+        setMembersById(
+          Object.fromEntries(
+            data.map((member) => [member.id, member as Member]),
+          ),
+        )
+      }
     })()
   }, [workspaceId])
+
+  const loadChannelMembers = useCallback(async () => {
+    setChannelMembersLoaded(false)
+    try {
+      const res = await fetch(`/api/channels/${activeChannel.id}/members`)
+      if (!res.ok) {
+        setChannelMembers([])
+        return
+      }
+      const json = (await res.json()) as { members?: Member[] }
+      setChannelMembers(json.members ?? [])
+    } finally {
+      setChannelMembersLoaded(true)
+    }
+  }, [activeChannel.id])
+
+  useEffect(() => {
+    void loadChannelMembers()
+  }, [loadChannelMembers])
+
+  const channelMemberCount = useMemo(() => {
+    const humans = channelMembers.length
+    const agentCount =
+      activeChannel.type === "hybrid" ? agents.length : 0
+    return humans + agentCount
+  }, [channelMembers.length, activeChannel.type, agents.length])
   const agentsGloballyPaused = workspaceSettings?.agents_globally_paused ?? false
 
   const topLevelMessages = useMemo(
@@ -790,6 +822,7 @@ export function Chat({
           onChannelUpdated={handleChannelUpdated}
           activeTab={channelTab}
           pinnedCount={pinnedMessages.length}
+          memberCount={channelMemberCount}
           onTabChange={setChannelTab}
           pendingApprovalCount={pendingBlocks.length}
           searchQuery={searchQuery}
@@ -883,6 +916,24 @@ export function Chat({
               onUnpin={(message) => {
                 void handlePinToggle(message, false)
               }}
+            />
+          </div>
+          <div
+            className={
+              channelTab === "members" ? "flex min-h-0 flex-1 flex-col" : "hidden"
+            }
+          >
+            <ChannelMembersView
+              channelId={activeChannel.id}
+              workspaceId={workspaceId}
+              channelSlug={activeChannel.slug}
+              members={channelMembers}
+              agents={agents}
+              channelType={activeChannel.type}
+              memberRole={memberRole}
+              currentMemberId={memberId}
+              loading={!channelMembersLoaded}
+              onMembersChange={setChannelMembers}
             />
           </div>
         </div>

@@ -3,7 +3,6 @@
 import { createContext, useContext, useMemo, useState } from "react"
 import { usePathname } from "next/navigation"
 import { Sidebar } from "@/components/Sidebar"
-import { isSettingsId } from "@/lib/settings-links"
 import type { Channel, MemberRole, Workspace } from "@/types"
 
 const SidebarMenuContext = createContext<{
@@ -45,12 +44,8 @@ export function AppShell({
 }) {
   const pathname = usePathname()
   const [sidebarOpen, setSidebarOpen] = useState(false)
-
-  const settingsSection = useMemo(() => {
-    const match = pathname.match(/^\/settings\/([^/]+)/)
-    const id = match?.[1]
-    return isSettingsId(id) ? id : null
-  }, [pathname])
+  const isChatRoute = pathname === "/"
+  const settingsActive = pathname === "/settings" || pathname.startsWith("/settings/")
 
   const menu = useMemo(
     () => ({
@@ -66,7 +61,7 @@ export function AppShell({
         <Sidebar
           workspaces={workspaces}
           channels={channels}
-          activeChannelSlug={activeChannelSlug}
+          activeChannelSlug={isChatRoute ? activeChannelSlug : ""}
           switchingChannelId={switchingChannelId}
           displayName={displayName}
           email={email}
@@ -77,7 +72,7 @@ export function AppShell({
           onChannelSelect={onChannelSelect}
           onChannelCreated={onChannelCreated}
           onChannelDeleted={onChannelDeleted}
-          settingsSection={settingsSection}
+          settingsActive={settingsActive}
         />
         <div className="relative flex min-w-0 flex-1 flex-col">{children}</div>
       </div>

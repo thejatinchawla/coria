@@ -68,14 +68,18 @@ export function WorkspaceSwitcher({
           setOpen((v) => !v)
           setCreating(false)
         }}
-        className="h-auto w-full min-w-0 justify-start gap-2 px-1 py-0.5 font-semibold hover:bg-sidebar-accent/60"
+        className={cn(
+          "h-9 w-full min-w-0 justify-between gap-3 rounded-md px-2.5 font-semibold",
+          "hover:bg-sidebar-accent/60",
+          open && "bg-sidebar-accent/60",
+        )}
         aria-expanded={open}
         aria-haspopup="listbox"
       >
-        <span className="truncate text-sm font-semibold">
+        <span className="min-w-0 flex-1 truncate text-left text-sm font-semibold">
           {active?.name ?? "Workspace"}
         </span>
-        <ChevronsUpDown className="size-3.5 shrink-0 text-muted-foreground" />
+        <ChevronsUpDown className="size-4 shrink-0 text-muted-foreground" />
       </Button>
 
       {open && (

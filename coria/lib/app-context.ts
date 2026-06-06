@@ -6,7 +6,6 @@ import {
   fetchAgents,
   fetchChannels,
   fetchMember,
-  fetchMemberId,
   fetchUserWorkspaces,
   fetchWorkspace,
 } from "@/lib/workspace"
@@ -55,9 +54,10 @@ export const loadWorkspaceShellContext = cache(
       redirect("/onboarding")
     }
 
-    const [channels, memberId, agents] = await Promise.all([
-      fetchChannels(supabase, workspace.id),
-      fetchMemberId(supabase, workspace.id, user.id),
+    const memberId = member.id
+
+    const [channels, agents] = await Promise.all([
+      fetchChannels(supabase, workspace.id, memberId),
       fetchAgents(supabase, workspace.id),
     ])
 

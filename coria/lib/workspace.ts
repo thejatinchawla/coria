@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
+import { fetchChannelsForMember } from "@/lib/channel-members-data"
 import type { Agent, Channel, Member, Workspace, WorkspaceSettings } from "@/types"
 
 export const DEMO_WORKSPACE_SLUG = "coria-demo"
@@ -155,7 +156,12 @@ export async function ensureDemoMember(
 export async function fetchChannels(
   supabase: SupabaseClient,
   workspaceId: string,
+  memberId?: string | null,
 ): Promise<Channel[]> {
+  if (memberId) {
+    return fetchChannelsForMember(supabase, workspaceId, memberId)
+  }
+
   const { data, error } = await supabase
     .from("channels")
     .select("id,workspace_id,name,slug,type,description,created_at")
@@ -457,11 +463,12 @@ export async function deleteChannel(
   supabase: SupabaseClient,
   workspaceId: string,
   channelId: string,
+  memberId?: string | null,
 ): Promise<
   | { ok: true; fallbackChannel: Channel }
   | { ok: false; error: string; status?: number }
 > {
-  const channels = await fetchChannels(supabase, workspaceId)
+  const channels = await fetchChannels(supabase, workspaceId, memberId)
   if (channels.length <= 1) {
     return {
       ok: false,
@@ -473,6 +480,14 @@ export async function deleteChannel(
   const target = channels.find((c) => c.id === channelId)
   if (!target) {
     return { ok: false, error: "Channel not found.", status: 404 }
+  }
+
+  if (target.slug === "general") {
+    return {
+      ok: false,
+      error: "Cannot delete #general — it is the default workspace channel.",
+      status: 400,
+    }
   }
 
   const { error } = await supabase

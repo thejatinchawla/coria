@@ -40,7 +40,8 @@ export function buildAuthCallbackRedirect(
 ) {
   const base =
     origin ?? (typeof window !== "undefined" ? window.location.origin : "")
-  const path = `/auth/callback?next=${encodeURIComponent(next)}`
+  // Client route: PKCE code verifier is stored in browser cookies during signInWithOtp.
+  const path = `/auth/confirm?next=${encodeURIComponent(next)}`
   return base ? `${base}${path}` : path
 }
 

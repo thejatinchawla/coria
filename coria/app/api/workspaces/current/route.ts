@@ -90,7 +90,12 @@ export async function DELETE() {
   }
 
   const nextWorkspace = remaining[0]!
-  const channels = await fetchChannels(supabase, nextWorkspace.id)
+  const nextMember = await fetchMember(supabase, nextWorkspace.id, userId!)
+  const channels = await fetchChannels(
+    supabase,
+    nextWorkspace.id,
+    nextMember?.id,
+  )
   const fallbackChannel =
     channels.find((c) => c.slug === "general") ?? channels[0] ?? null
 

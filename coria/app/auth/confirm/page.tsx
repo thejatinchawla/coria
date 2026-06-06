@@ -27,10 +27,14 @@ function AuthConfirmInner() {
       if (urlHasAuthCredentials(search, hash)) {
         const result = await completeAuthFromUrl(supabase, search, hash)
         if (result.ok) {
+          window.history.replaceState(null, "", "/auth/confirm")
           router.replace(result.destination)
           return
         }
-        setError(result.error)
+        const message = result.error.includes("PKCE code verifier")
+          ? "Open the sign-in link in the same browser where you requested it. If it still fails, request a new link from the login page."
+          : result.error
+        setError(message)
         return
       }
 

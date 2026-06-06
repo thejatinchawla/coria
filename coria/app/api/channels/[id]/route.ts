@@ -69,6 +69,7 @@ export async function DELETE(
     ctx.supabase,
     ctx.workspace!.id,
     channelId,
+    ctx.member!.id,
   )
 
   if (!result.ok) {
