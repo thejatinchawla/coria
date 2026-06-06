@@ -254,7 +254,7 @@ export function ChannelMembersView({
   return (
     <div className="flex-1 overflow-y-auto">
       <div className="mx-auto max-w-3xl px-3 sm:px-6">
-        <div className="flex items-center justify-between gap-3 border-b py-3">
+        <div className="flex flex-col gap-2 border-b py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
           <p className="text-sm text-muted-foreground">
           {sortedMembers.length} teammate{sortedMembers.length === 1 ? "" : "s"}
           {showAgents

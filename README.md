@@ -227,6 +227,7 @@ cd coria && npm run lint && npm run build
 | Auth redirect / “invalid redirect URL” | Add all three `/auth/*` URLs under **Authentication → URL Configuration** (step 4)                                  |
 | Magic link says user not found         | Use **Sign up** first; magic link only signs in existing accounts                                                   |
 | Magic link / PKCE verifier error       | Update Supabase **Email Templates** from `backend/supabase/templates/` (see step 4); request a new link after saving |
+| Invite URL like `app.com&token_hash=…` | Update **Invite user** template (not just Magic Link) — paste full `invite.html`; remove any `{{ .RedirectTo }}&token_hash` pattern; resend invite |
 | Agent never replies / stream hangs     | Backend not running, wrong `BACKEND_URL`, or `INVOKE_SECRET` mismatch between `backend/.env` and `coria/.env.local` |
 | `401 Unauthorized` on invoke           | Set the same `INVOKE_SECRET` in both apps, or leave both empty for local-only dev                                   |
 | `/health` shows `"db":"error"`         | Wrong `SUPABASE_SERVICE_KEY` or migrations not applied (`supabase db push`)                                         |

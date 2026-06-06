@@ -5,7 +5,7 @@ import traceback
 from datetime import datetime, timezone
 
 from anthropic import AsyncAnthropic
-from groq import AsyncGroq, BadRequestError
+from groq import APIError, AsyncGroq, BadRequestError
 
 from db import get_supabase
 from domain import fetch_agent, fetch_channel, validate_invoke_scope
@@ -86,6 +86,32 @@ def _format_thread_messages(rows: list[dict]) -> str:
     )
 
 
+TOOL_CAPABILITY_LINES: dict[str, str] = {
+    "web_search": "web_search — search the web for current information",
+    "github_read": "github_read — read repo metadata, README excerpts, and issues",
+    "github_post_comment": (
+        "github_post_comment — post a comment on a GitHub issue (user approval required)"
+    ),
+    "github_create_pr": (
+        "github_create_pr — open a draft pull request (user approval required)"
+    ),
+    "workspace_search": "workspace_search — search memory across workspace channels",
+}
+
+
+def augment_system_prompt_with_tools(base_prompt: str, allowed_tools: list[str]) -> str:
+    """Append enabled tools so the model uses them even if the stored prompt is stale."""
+    names = [t for t in (allowed_tools or []) if t in TOOL_CAPABILITY_LINES]
+    if not names:
+        return base_prompt
+    lines = "\n".join(f"- {TOOL_CAPABILITY_LINES[name]}" for name in names)
+    return (
+        f"{base_prompt.rstrip()}\n\n"
+        "Your enabled tools (use them when relevant — do not claim you lack access):\n"
+        f"{lines}"
+    )
+
+
 def build_system_prompt(
     base_prompt: str = DEFAULT_AGENT_SYSTEM_PROMPT,
     thread_messages: list[dict] | None = None,
@@ -93,8 +119,9 @@ def build_system_prompt(
     workspace_chunks: list[dict] | None = None,
     recent_messages: list[dict] | None = None,
     digest_mode: bool = False,
+    allowed_tools: list[str] | None = None,
 ) -> str:
-    parts = [base_prompt]
+    parts = [augment_system_prompt_with_tools(base_prompt, allowed_tools or [])]
 
     if thread_messages:
         parts.append(
@@ -177,20 +204,37 @@ def _extract_anthropic_text(content) -> str:
 
 
 _GROQ_FAILED_TOOL_RE = re.compile(
-    r"<function=(\w+)\s*(\{.*?\})\s*</function>",
+    r"<function=(\w+)\s*(\{.*?\})\s*(?:</function>|/>)",
     re.DOTALL,
 )
 
 
-def _parse_groq_tool_use_failed(error: BadRequestError) -> tuple[str, dict] | None:
+def _groq_error_details(error: BadRequestError | APIError) -> dict | None:
+    """Extract the nested error object from Groq HTTP or SSE failures."""
+    if isinstance(error, BadRequestError):
+        try:
+            payload = error.response.json()
+        except Exception:
+            return None
+        err = payload.get("error")
+        return err if isinstance(err, dict) else None
+    if isinstance(error, APIError):
+        body = error.body
+        if isinstance(body, dict):
+            if body.get("code"):
+                return body
+            nested = body.get("error")
+            return nested if isinstance(nested, dict) else None
+    return None
+
+
+def _parse_groq_tool_use_failed(
+    error: BadRequestError | APIError,
+) -> tuple[str, dict] | None:
     """Groq sometimes rejects a tool call when the model emits XML-style syntax
     instead of structured tool_calls. Parse failed_generation and recover."""
-    try:
-        body = error.response.json()
-    except Exception:
-        return None
-    err = body.get("error") or {}
-    if err.get("code") != "tool_use_failed":
+    err = _groq_error_details(error)
+    if not err or err.get("code") != "tool_use_failed":
         return None
     failed = err.get("failed_generation") or ""
     match = _GROQ_FAILED_TOOL_RE.search(failed)
@@ -316,6 +360,13 @@ async def run_groq_loop(
         except BadRequestError as e:
             recovered = _parse_groq_tool_use_failed(e)
             if recovered is None:
+                if active_tools:
+                    print(
+                        f"[groq] tool call failed, retry without tools: {e}",
+                        flush=True,
+                    )
+                    active_tools = []
+                    continue
                 raise
             name, args = recovered
             print(
@@ -526,6 +577,7 @@ async def invoke_agent(user_message: str, channel_id: str, agent_id: str) -> Non
             base_prompt=agent_system_prompt(agent),
             memory_chunks=memory_chunks,
             recent_messages=recent_messages,
+            allowed_tools=agent.get("allowed_tools") or [],
         )
         messages = serialize_messages([{"role": "user", "content": user_message}])
         agent_tools = tools_for_agent(agent)

@@ -83,7 +83,6 @@ export default async function Home({ searchParams }: PageProps) {
       memberId={memberId}
       workspaceId={shell.workspace.id}
       initialMessages={(messages ?? []) as Message[]}
-      userDisplayName={shell.userDisplayName}
     />
   )
 }

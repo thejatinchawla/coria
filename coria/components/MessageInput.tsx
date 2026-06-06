@@ -9,6 +9,7 @@ import { useToast } from "@/components/Toast"
 import { AgentAvatar } from "@/components/AgentAvatar"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
+import { useIsMobile } from "@/lib/use-mobile"
 import type { ActionBlock, Agent, Message } from "@/types"
 
 function agentDescription(agent: Agent): string {
@@ -17,7 +18,12 @@ function agentDescription(agent: Agent): string {
   return "AI teammate"
 }
 
-function messagePlaceholder(channelSlug: string, agents: Agent[]): string {
+function messagePlaceholder(
+  channelSlug: string,
+  agents: Agent[],
+  compact: boolean,
+): string {
+  if (compact) return `Message #${channelSlug}`
   const active = agents.filter((a) => a.status === "active")
   if (active.length === 0) {
     return `Message #${channelSlug}`
@@ -80,6 +86,7 @@ export function MessageInput({
   onPrefillApplied?: () => void
 }) {
   const { toast } = useToast()
+  const isMobile = useIsMobile()
   const [text, setText] = useState("")
   const [sending, setSending] = useState(false)
   const [hintIndex, setHintIndex] = useState(0)
@@ -89,8 +96,8 @@ export function MessageInput({
 
   const hintAgents = useMemo(() => matchingAgents(text, agents), [text, agents])
   const placeholder = useMemo(
-    () => messagePlaceholder(channelSlug, agents),
-    [channelSlug, agents],
+    () => messagePlaceholder(channelSlug, agents, isMobile),
+    [channelSlug, agents, isMobile],
   )
   const showAgentHint = hintAgents.length > 0
   const canSend = text.trim().length > 0 && !sending && !agentsGloballyPaused
@@ -160,6 +167,11 @@ export function MessageInput({
       onMessageSent?.(inserted as Message)
     }
 
+    setText("")
+    setHintIndex(0)
+    if (textareaRef.current) textareaRef.current.style.height = "auto"
+    refocusAfterSendRef.current = true
+
     if (inserted?.id) {
       fetch("/api/memory/embed", {
         method: "POST",
@@ -226,13 +238,11 @@ export function MessageInput({
         onStreamError?.()
       } finally {
         onStreamEnd?.()
+        setSending(false)
       }
+      return
     }
 
-    setText("")
-    setHintIndex(0)
-    if (textareaRef.current) textareaRef.current.style.height = "auto"
-    refocusAfterSendRef.current = true
     setSending(false)
   }
 

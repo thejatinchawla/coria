@@ -7,7 +7,7 @@ from collections.abc import AsyncIterator
 from typing import Any
 
 from fastapi import HTTPException
-from groq import AsyncGroq, BadRequestError
+from groq import APIError, AsyncGroq, BadRequestError
 
 from agent import (
     MAX_AGENT_ITERATIONS,
@@ -29,14 +29,6 @@ from tool_runner import ApprovalPaused
 from tools import tools_for_agent
 
 from db import get_supabase
-
-
-def _last_role(messages: list[dict]) -> str | None:
-    for msg in reversed(messages):
-        role = msg.get("role")
-        if role:
-            return role
-    return None
 
 
 async def finalize_agent_message(
@@ -123,8 +115,11 @@ async def run_groq_loop_streaming(
         except BadRequestError as e:
             recovered = _parse_groq_tool_use_failed(e)
             if recovered is None:
-                # After a tool result is in context, retry once without tools.
-                if active_tools and _last_role(loop_working) == "tool":
+                if active_tools:
+                    print(
+                        f"[groq] tool call failed, retry without tools: {e}",
+                        flush=True,
+                    )
                     active_tools = []
                     continue
                 raise
@@ -151,30 +146,64 @@ async def run_groq_loop_streaming(
                 return
             continue
 
-        async for chunk in stream:
-            if not chunk.choices:
-                continue
-            choice = chunk.choices[0]
-            delta = choice.delta
-            if delta.content:
-                content_buf.append(delta.content)
+        try:
+            async for chunk in stream:
+                if not chunk.choices:
+                    continue
+                choice = chunk.choices[0]
+                delta = choice.delta
+                if delta.content:
+                    content_buf.append(delta.content)
 
-            if delta.tool_calls:
-                for tc in delta.tool_calls:
-                    idx = tc.index or 0
-                    if idx not in tool_calls_acc:
-                        tool_calls_acc[idx] = {
-                            "id": "",
-                            "name": "",
-                            "arguments": "",
-                        }
-                    if tc.id:
-                        tool_calls_acc[idx]["id"] = tc.id
-                    if tc.function:
-                        if tc.function.name:
-                            tool_calls_acc[idx]["name"] = tc.function.name
-                        if tc.function.arguments:
-                            tool_calls_acc[idx]["arguments"] += tc.function.arguments
+                if delta.tool_calls:
+                    for tc in delta.tool_calls:
+                        idx = tc.index or 0
+                        if idx not in tool_calls_acc:
+                            tool_calls_acc[idx] = {
+                                "id": "",
+                                "name": "",
+                                "arguments": "",
+                            }
+                        if tc.id:
+                            tool_calls_acc[idx]["id"] = tc.id
+                        if tc.function:
+                            if tc.function.name:
+                                tool_calls_acc[idx]["name"] = tc.function.name
+                            if tc.function.arguments:
+                                tool_calls_acc[idx]["arguments"] += tc.function.arguments
+        except APIError as e:
+            recovered = _parse_groq_tool_use_failed(e)
+            if recovered is None:
+                if active_tools:
+                    print(
+                        f"[groq] stream tool call failed, retry without tools: {e}",
+                        flush=True,
+                    )
+                    active_tools = []
+                    continue
+                raise
+            name, args = recovered
+            yield {"type": "status", "message": f"Using {name}…"}
+            try:
+                await _run_groq_tool(
+                    name,
+                    args,
+                    f"recovered_{len(loop_steps)}",
+                    loop_working,
+                    loop_steps,
+                    supabase=supabase,
+                    ctx=ctx,
+                    trace_id=trace_id,
+                )
+            except ApprovalPaused as paused:
+                yield {
+                    "type": "_approval_paused",
+                    "paused": paused,
+                    "working": loop_working,
+                    "steps": loop_steps,
+                }
+                return
+            continue
 
         if tool_calls_acc:
             for _idx in sorted(tool_calls_acc.keys()):
@@ -387,6 +416,7 @@ async def invoke_agent_stream(
             workspace_chunks=retrieval["workspace_chunks"],
             recent_messages=retrieval["recent_messages"],
             digest_mode=bool(retrieval.get("digest_mode")),
+            allowed_tools=agent.get("allowed_tools") or [],
         )
         base_state["system_prompt"] = system_prompt
 

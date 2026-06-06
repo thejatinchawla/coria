@@ -1,9 +1,8 @@
+import env  # noqa: F401 — load backend/.env before reading os.environ
+
 import os
 
-from dotenv import load_dotenv
 from supabase import Client, create_client
-
-load_dotenv()
 
 
 def get_supabase() -> Client:

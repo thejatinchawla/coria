@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useState, useTransition } from "react"
-import { useRouter } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import { Check, ChevronsUpDown, Plus } from "lucide-react"
 import type { Workspace } from "@/types"
 import { CreateWorkspaceForm } from "@/components/CreateWorkspaceForm"
@@ -18,6 +18,7 @@ export function WorkspaceSwitcher({
   activeChannelSlug: string
 }) {
   const router = useRouter()
+  const pathname = usePathname()
   const [open, setOpen] = useState(false)
   const [creating, setCreating] = useState(false)
   const [switchingId, setSwitchingId] = useState<string | null>(null)
@@ -50,8 +51,12 @@ export function WorkspaceSwitcher({
         body: JSON.stringify({ workspace_id: workspaceId }),
       })
       if (!res.ok) return
+      const destination = pathname.startsWith("/settings")
+        ? pathname
+        : `/?channel=${activeChannelSlug}`
       startTransition(() => {
-        router.push(`/?channel=${activeChannelSlug}`)
+        router.push(destination)
+        router.refresh()
       })
     } finally {
       setSwitchingId(null)

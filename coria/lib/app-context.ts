@@ -34,6 +34,8 @@ export const loadWorkspaceShellContext = cache(
     if (!user) redirect("/login")
 
     const userDisplayName = displayName(user)
+    const memberDisplayName = (member: { display_name: string }) =>
+      member.display_name?.trim() || userDisplayName
     const workspaces = await fetchUserWorkspaces(supabase, user.id)
     const activeWorkspaceId = await getActiveWorkspaceIdFromCookie()
 
@@ -55,6 +57,7 @@ export const loadWorkspaceShellContext = cache(
     }
 
     const memberId = member.id
+    const resolvedDisplayName = memberDisplayName(member)
 
     const [channels, agents] = await Promise.all([
       fetchChannels(supabase, workspace.id, memberId),
@@ -70,7 +73,7 @@ export const loadWorkspaceShellContext = cache(
       channels,
       agents,
       userEmail: user.email ?? "",
-      userDisplayName,
+      userDisplayName: resolvedDisplayName,
     }
   },
 )

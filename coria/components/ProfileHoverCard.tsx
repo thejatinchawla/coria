@@ -1,6 +1,7 @@
 "use client"
 
 import {
+  useEffect,
   useLayoutEffect,
   useRef,
   useState,
@@ -11,6 +12,7 @@ import { createPortal } from "react-dom"
 import { AgentAiBadge } from "@/components/AgentAiBadge"
 import { AgentAvatar } from "@/components/AgentAvatar"
 import { MemberAvatarImage } from "@/components/MemberAvatar"
+import { useCoarsePointer } from "@/lib/use-mobile"
 import type { Agent, Member, MemberRole } from "@/types"
 
 function formatRole(role: MemberRole) {
@@ -78,9 +80,11 @@ export function ProfileHoverCard({
   content: ReactNode
   disabled?: boolean
 }) {
+  const coarsePointer = useCoarsePointer()
   const [open, setOpen] = useState(false)
   const [style, setStyle] = useState<CSSProperties | null>(null)
   const triggerRef = useRef<HTMLSpanElement>(null)
+  const cardRef = useRef<HTMLDivElement>(null)
   const showTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const clearShowTimer = () => {
@@ -101,6 +105,12 @@ export function ProfileHoverCard({
     setOpen(false)
   }
 
+  const toggle = () => {
+    if (disabled) return
+    clearShowTimer()
+    setOpen((value) => !value)
+  }
+
   useLayoutEffect(() => {
     if (!open || !triggerRef.current) {
       setStyle(null)
@@ -108,30 +118,44 @@ export function ProfileHoverCard({
     }
 
     const rect = triggerRef.current.getBoundingClientRect()
-    const cardWidth = 256
+    const cardWidth = Math.min(256, window.innerWidth - 16)
     const left = Math.min(
       Math.max(8, rect.left),
       window.innerWidth - cardWidth - 8,
     )
+    const top = Math.min(rect.bottom + 8, window.innerHeight - 8)
 
     setStyle({
       position: "fixed",
-      top: rect.bottom + 8,
+      top,
       left,
       width: cardWidth,
       zIndex: 60,
     })
   }, [open])
 
+  useEffect(() => {
+    if (!open || !coarsePointer) return
+    function onPointerDown(event: MouseEvent) {
+      const target = event.target as Node
+      if (triggerRef.current?.contains(target)) return
+      if (cardRef.current?.contains(target)) return
+      setOpen(false)
+    }
+    document.addEventListener("mousedown", onPointerDown)
+    return () => document.removeEventListener("mousedown", onPointerDown)
+  }, [open, coarsePointer])
+
   return (
     <>
       <span
         ref={triggerRef}
         className="inline-flex"
-        onMouseEnter={show}
-        onMouseLeave={hide}
-        onFocus={show}
-        onBlur={hide}
+        onMouseEnter={coarsePointer ? undefined : show}
+        onMouseLeave={coarsePointer ? undefined : hide}
+        onFocus={coarsePointer ? undefined : show}
+        onBlur={coarsePointer ? undefined : hide}
+        onClick={coarsePointer ? toggle : undefined}
       >
         {children}
       </span>
@@ -139,11 +163,12 @@ export function ProfileHoverCard({
         typeof document !== "undefined" &&
         createPortal(
           <div
+            ref={cardRef}
             style={style ?? undefined}
             className="rounded-lg border bg-popover p-3 text-popover-foreground shadow-lg"
             role="tooltip"
-            onMouseEnter={show}
-            onMouseLeave={hide}
+            onMouseEnter={coarsePointer ? undefined : show}
+            onMouseLeave={coarsePointer ? undefined : hide}
           >
             {content}
           </div>,

@@ -267,7 +267,7 @@ export function AuditLogSettings({ agents }: { agents: Agent[] }) {
                 >
                   {entry.outcome}
                 </span>
-                <span className="font-mono text-xs">{entry.tool_name}</span>
+                <span className="break-all font-mono text-xs">{entry.tool_name}</span>
                 <span className="text-xs text-muted-foreground">
                   @{agentName(entry.agent_id)}
                 </span>

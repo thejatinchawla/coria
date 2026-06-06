@@ -95,10 +95,10 @@ export function AddChannelMemberDialog({
   if (!open) return null
 
   return (
-    <>
+    <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
       <button
         type="button"
-        className="fixed inset-0 z-40 bg-black/40"
+        className="absolute inset-0 bg-black/40"
         aria-label="Close add member dialog"
         onClick={onClose}
       />
@@ -106,7 +106,7 @@ export function AddChannelMemberDialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby="add-channel-member-title"
-        className="fixed top-1/2 left-1/2 z-50 flex max-h-[min(32rem,85vh)] w-[min(24rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 flex-col rounded-lg border bg-background shadow-lg"
+        className="relative z-10 flex max-h-[min(32rem,85dvh)] w-full flex-col rounded-t-lg border bg-background shadow-lg sm:max-h-[min(32rem,85vh)] sm:w-[min(24rem,calc(100vw-2rem))] sm:rounded-lg"
       >
         <div className="flex items-center justify-between border-b px-4 py-3">
           <h2 id="add-channel-member-title" className="text-sm font-semibold">
@@ -183,6 +183,6 @@ export function AddChannelMemberDialog({
           )}
         </div>
       </div>
-    </>
+    </div>
   )
 }

@@ -296,7 +296,7 @@ export function TriggerSettings({
                       : ""}
                   </p>
                 </div>
-                <div className="flex shrink-0 flex-wrap gap-1">
+                <div className="flex shrink-0 flex-wrap gap-1 self-stretch sm:self-auto">
                   <Button
                     variant="ghost"
                     size="sm"

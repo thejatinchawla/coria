@@ -4,6 +4,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -17,12 +18,13 @@ import {
   writeStoredChannelSlug,
 } from "@/lib/channel-slug"
 import { chatUrl } from "@/lib/settings-url"
-import type { Channel } from "@/types"
+import type { Agent, Channel, Member, MemberRole } from "@/types"
 
 type ChatBridge = {
   onChannelSelect?: (channel: Channel) => void
   onChannelCreated?: (channel: Channel) => void
   onChannelDeleted?: (channelId: string, fallback: Channel) => void
+  onProfileUpdated?: (member: Member) => void
 }
 
 type WorkspaceShellState = WorkspaceShellContext & {
@@ -37,6 +39,7 @@ const WorkspaceShellStateContext = createContext<{
   setSwitchingChannelId: React.Dispatch<React.SetStateAction<string | null>>
   registerChatBridge: (bridge: ChatBridge | null) => void
   setChannels: React.Dispatch<React.SetStateAction<Channel[]>>
+  updateCurrentMemberProfile: (profile: Member) => void
 } | null>(null)
 
 export function useWorkspaceShell() {
@@ -57,7 +60,13 @@ export function WorkspaceShell({
   const pathname = usePathname()
   const router = useRouter()
   const chatBridgeRef = useRef<ChatBridge | null>(null)
+  const [workspace, setWorkspace] = useState(initial.workspace)
+  const [workspaces, setWorkspaces] = useState(initial.workspaces)
+  const [memberRole, setMemberRole] = useState<MemberRole>(initial.memberRole)
+  const [agents, setAgents] = useState<Agent[]>(initial.agents)
   const [channels, setChannels] = useState(initial.channels)
+  const [currentMember, setCurrentMember] = useState(initial.member)
+  const [userDisplayName, setUserDisplayName] = useState(initial.userDisplayName)
   const [switchingChannelId, setSwitchingChannelId] = useState<string | null>(
     null,
   )
@@ -80,6 +89,30 @@ export function WorkspaceShell({
   const registerChatBridge = useCallback((bridge: ChatBridge | null) => {
     chatBridgeRef.current = bridge
   }, [])
+
+  const updateCurrentMemberProfile = useCallback((profile: Member) => {
+    setCurrentMember(profile)
+    setUserDisplayName(profile.display_name?.trim() || initial.userDisplayName)
+    chatBridgeRef.current?.onProfileUpdated?.(profile)
+  }, [initial.userDisplayName])
+
+  useEffect(() => {
+    setWorkspace(initial.workspace)
+    setWorkspaces(initial.workspaces)
+    setMemberRole(initial.memberRole)
+    setAgents(initial.agents)
+    setChannels(initial.channels)
+    setCurrentMember(initial.member)
+    setUserDisplayName(initial.userDisplayName)
+  }, [
+    initial.workspace,
+    initial.workspaces,
+    initial.memberRole,
+    initial.agents,
+    initial.channels,
+    initial.member,
+    initial.userDisplayName,
+  ])
 
   const handleChannelSelect = useCallback(
     (channel: Channel) => {
@@ -110,9 +143,24 @@ export function WorkspaceShell({
   const shell = useMemo(
     (): WorkspaceShellState => ({
       ...initial,
+      workspace,
+      workspaces,
+      memberRole,
+      agents,
+      member: currentMember,
+      userDisplayName,
       channels,
     }),
-    [initial, channels],
+    [
+      initial,
+      workspace,
+      workspaces,
+      memberRole,
+      agents,
+      currentMember,
+      userDisplayName,
+      channels,
+    ],
   )
 
   const value = useMemo(
@@ -124,6 +172,7 @@ export function WorkspaceShell({
       setSwitchingChannelId,
       registerChatBridge,
       setChannels,
+      updateCurrentMemberProfile,
     }),
     [
       shell,
@@ -131,20 +180,21 @@ export function WorkspaceShell({
       setActiveChannelSlug,
       switchingChannelId,
       registerChatBridge,
+      updateCurrentMemberProfile,
     ],
   )
 
   return (
     <WorkspaceShellStateContext.Provider value={value}>
       <AppShell
-        workspaces={initial.workspaces}
+        workspaces={workspaces}
         channels={channels}
         activeChannelSlug={activeChannelSlug}
         switchingChannelId={switchingChannelId}
-        displayName={initial.userDisplayName}
+        displayName={userDisplayName}
         email={initial.userEmail}
-        workspaceId={initial.workspace.id}
-        memberRole={initial.memberRole}
+        workspaceId={workspace.id}
+        memberRole={memberRole}
         onChannelSelect={handleChannelSelect}
         onChannelCreated={handleChannelCreated}
         onChannelDeleted={handleChannelDeleted}

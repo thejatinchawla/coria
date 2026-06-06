@@ -9,6 +9,7 @@ import {
   Terminal,
   Wrench,
 } from "lucide-react"
+import { LinkifiedText } from "@/components/LinkifiedText"
 import { createClient } from "@/lib/supabase"
 import { cn } from "@/lib/utils"
 import type {
@@ -188,7 +189,7 @@ function ReplyStep({ step }: { step: Extract<TraceStep, { type: "reply" }> }) {
         </span>
       </div>
       <p className="text-sm whitespace-pre-wrap break-words text-foreground">
-        {step.content}
+        <LinkifiedText text={step.content} />
       </p>
     </div>
   )

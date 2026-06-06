@@ -175,7 +175,7 @@ export function MemberSettings({
               className="flex flex-col gap-2 rounded-lg border p-3 sm:flex-row sm:items-center"
             >
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium">
+                <p className="truncate text-sm font-medium">
                   {m.display_name}
                   {m.id === currentMemberId && (
                     <span className="ml-2 text-xs text-muted-foreground">(you)</span>
@@ -230,10 +230,12 @@ export function MemberSettings({
             {invites.map((inv) => (
               <li
                 key={inv.id}
-                className="flex items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm"
+                className="flex flex-col gap-2 rounded-lg border px-3 py-2 text-sm sm:flex-row sm:items-center sm:justify-between"
               >
-                <span className="min-w-0 text-muted-foreground">
-                  {inv.email} · {inv.role} · expires{" "}
+                <span className="min-w-0 break-words text-muted-foreground">
+                  <span className="font-medium text-foreground">{inv.email}</span>
+                  {" · "}
+                  {inv.role} · expires{" "}
                   {new Date(inv.expires_at).toLocaleDateString()}
                 </span>
                 <Button

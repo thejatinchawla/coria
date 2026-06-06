@@ -7,17 +7,15 @@ import {
   Pencil,
   Pin,
   Search,
-  Settings,
   ShieldAlert,
   Users,
   X,
 } from "lucide-react"
 import type { Channel, MessageSearchHit } from "@/types"
 import { ChannelSettingsDialog } from "@/components/ChannelSettingsDialog"
+import { LinkifiedText } from "@/components/LinkifiedText"
 import { cn } from "@/lib/utils"
-import Link from "next/link"
 import { useSidebarMenu } from "@/components/AppShell"
-import { settingsUrl } from "@/lib/settings-url"
 
 export type ChannelTab = "messages" | "pins" | "members"
 
@@ -45,8 +43,9 @@ function ChannelTabButton({
           : "text-muted-foreground hover:text-foreground",
       )}
     >
-      <Icon className="size-4 shrink-0" />
-      <span>{label}</span>
+      <Icon className="size-4 shrink-0" aria-hidden />
+      <span className="hidden sm:inline">{label}</span>
+      <span className="sr-only sm:hidden">{label}</span>
       {count !== undefined && count > 0 && (
         <span
           className={cn(
@@ -148,12 +147,12 @@ export function ChannelHeader({
           {pendingApprovalCount > 0 && (
             <span
               className={cn(
-                "mr-1 flex items-center gap-1 rounded-full bg-amber-500/15 px-2.5 py-1 text-xs font-medium text-amber-700 dark:text-amber-400",
+                "mr-0.5 flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-1 text-xs font-medium text-amber-700 dark:text-amber-400 sm:mr-1 sm:px-2.5",
               )}
               title="Pending approvals in this channel"
             >
-              <ShieldAlert className="size-3.5" />
-              {pendingApprovalCount}
+              <ShieldAlert className="size-3.5 shrink-0" />
+              <span className="tabular-nums">{pendingApprovalCount}</span>
             </span>
           )}
           <button
@@ -164,19 +163,12 @@ export function ChannelHeader({
           >
             <Search className="size-5" />
           </button>
-          <Link
-            href={settingsUrl("agents")}
-            className="rounded-md p-2 text-muted-foreground hover:bg-muted"
-            aria-label="Settings"
-          >
-            <Settings className="size-5" />
-          </Link>
         </div>
       </div>
 
       {onTabChange && (
         <nav
-          className="flex items-center gap-0.5 border-t border-border/60 px-1 sm:px-4"
+          className="flex items-center justify-around gap-0.5 overflow-x-auto border-t border-border/60 px-1 sm:justify-start sm:px-4"
           aria-label="Channel views"
         >
           <ChannelTabButton
@@ -248,7 +240,7 @@ export function ChannelHeader({
                   >
                     <span className="font-medium">{hit.sender_name}</span>
                     <span className="line-clamp-2 text-muted-foreground">
-                      {hit.content}
+                      <LinkifiedText text={hit.content} />
                     </span>
                   </button>
                 </li>

@@ -57,7 +57,6 @@ export function Chat({
   memberId,
   workspaceId,
   initialMessages,
-  userDisplayName,
 }: {
   workspace: Workspace
   memberRole: MemberRole
@@ -68,7 +67,6 @@ export function Chat({
   memberId: string | null
   workspaceId: string
   initialMessages: Message[]
-  userDisplayName: string
 }) {
   const { toast } = useToast()
   const { confirm } = useConfirm()
@@ -79,6 +77,7 @@ export function Chat({
     setSwitchingChannelId,
     registerChatBridge,
   } = useWorkspaceShell()
+  const userDisplayName = shell.userDisplayName
   const channelList = shell.channels
   const [activeChannel, setActiveChannel] = useState(channel)
   const [messages, setMessages] = useState(initialMessages)
@@ -199,6 +198,16 @@ export function Chat({
       setChannelMembersLoaded(true)
     }
   }, [activeChannel.id])
+
+  const handleProfileUpdated = useCallback(
+    (member: Member) => {
+      setMembersById((prev) => ({ ...prev, [member.id]: member }))
+      setChannelMembers((prev) =>
+        prev.map((row) => (row.id === member.id ? { ...row, ...member } : row)),
+      )
+    },
+    [],
+  )
 
   useEffect(() => {
     void loadChannelMembers()
@@ -628,6 +637,7 @@ export function Chat({
       },
       onChannelCreated: handleChannelCreated,
       onChannelDeleted: handleChannelDeleted,
+      onProfileUpdated: handleProfileUpdated,
     })
     return () => registerChatBridge(null)
   }, [
@@ -635,6 +645,7 @@ export function Chat({
     switchChannel,
     handleChannelCreated,
     handleChannelDeleted,
+    handleProfileUpdated,
   ])
 
   function handleActionBlock(block: ActionBlock) {

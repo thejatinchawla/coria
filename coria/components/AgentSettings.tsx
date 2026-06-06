@@ -250,7 +250,7 @@ export function AgentSettings({
           {agents.map((agent) => (
             <li
               key={agent.id}
-              className="flex items-center gap-3 rounded-lg border p-3"
+              className="flex flex-col gap-3 rounded-lg border p-3 sm:flex-row sm:items-center"
             >
               <AgentAvatar
                 name={agent.name}
@@ -271,7 +271,7 @@ export function AgentSettings({
                   {agent.template_id ? ` · ${agent.template_id}` : ""}
                 </p>
               </div>
-              <div className="flex shrink-0 gap-1">
+              <div className="flex shrink-0 gap-1 self-end sm:self-auto">
                 <Button
                   variant="ghost"
                   size="icon"

@@ -4,26 +4,12 @@ import { SettingsPageView } from "@/components/SettingsPageView"
 import { loadWorkspaceShellContext } from "@/lib/app-context"
 import {
   isSettingsId,
+  resolveSettingsSection,
   settingsLinkTitle,
-  type SettingsId,
 } from "@/lib/settings-links"
 
 type PageProps = {
   params: Promise<{ section: string }>
-}
-
-function resolveSettingsSection(
-  section: SettingsId,
-  memberRole: string,
-): SettingsId {
-  if (
-    section === "workspace" &&
-    memberRole !== "owner" &&
-    memberRole !== "admin"
-  ) {
-    return "profile"
-  }
-  return section
 }
 
 export async function generateMetadata({
@@ -49,12 +35,5 @@ export default async function SettingsSectionPage({ params }: PageProps) {
     redirect(`/settings/${section}`)
   }
 
-  return (
-    <SettingsPageView
-      section={section}
-      workspaceName={ctx.workspace.name}
-      memberRole={ctx.memberRole}
-      agents={ctx.agents}
-    />
-  )
+  return <SettingsPageView section={section} />
 }

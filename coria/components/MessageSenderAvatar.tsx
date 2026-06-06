@@ -57,7 +57,7 @@ export function MessageSenderAvatar({
   return (
     <MemberAvatar
       member={member}
-      displayName={message.sender_name}
+      displayName={member?.display_name?.trim() || message.sender_name}
       size={size}
     />
   )
@@ -74,7 +74,10 @@ export function SenderNameWithProfile({
   member?: Member | null
   className?: string
 }) {
-  const label = message.sender_name
+  const label =
+    message.sender_type === "human" && member
+      ? member.display_name?.trim() || message.sender_name
+      : message.sender_name
 
   if (message.sender_type === "agent" && agent) {
     return (

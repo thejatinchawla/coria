@@ -1,6 +1,5 @@
 "use client"
 
-import { useEffect, useState } from "react"
 import type { Agent, Member, Message } from "@/types"
 import { messageAgent, messageMember } from "@/lib/message-sender"
 import { Message as MessageBubble } from "@/components/Message"
@@ -152,16 +151,4 @@ export function ThreadInline({
   )
 }
 
-export function useIsMobile(breakpointPx = 768): boolean {
-  const [mobile, setMobile] = useState(false)
-
-  useEffect(() => {
-    const mq = window.matchMedia(`(max-width: ${breakpointPx - 1}px)`)
-    const update = () => setMobile(mq.matches)
-    update()
-    mq.addEventListener("change", update)
-    return () => mq.removeEventListener("change", update)
-  }, [breakpointPx])
-
-  return mobile
-}
+export { useIsMobile } from "@/lib/use-mobile"

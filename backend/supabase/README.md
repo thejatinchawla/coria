@@ -47,7 +47,7 @@ Dashboard → **Authentication → Email Templates** — paste from `templates/`
 | Invite user     | `templates/invite.html`     |
 | Confirm signup  | `templates/confirm-signup.html` |
 
-Each link uses `{{ .RedirectTo }}&token_hash={{ .TokenHash }}&type=…` so sign-in works in any browser (no PKCE cookie required).
+Each CTA uses `{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=…&next=…` (do **not** append to `{{ .RedirectTo }}` — it is often just the site origin and produces broken URLs).
 
 ## Optional
 

@@ -25,6 +25,7 @@ import {
 } from "@/components/MessageSenderAvatar"
 import { Button } from "@/components/ui/button"
 import { MessageTimestamp } from "@/components/MessageTimestamp"
+import { LinkifiedText } from "@/components/LinkifiedText"
 import { ReasoningTrace } from "@/components/ReasoningTrace"
 import { cn } from "@/lib/utils"
 import type { Agent, Member, Message as MessageType } from "@/types"
@@ -61,8 +62,11 @@ function MessageActionsOverlay({
   return (
     <div
       className={cn(
-        "absolute top-1/2 -translate-y-1/2",
-        side === "left" ? "right-full mr-1" : "left-full ml-1",
+        "absolute top-1 right-1 z-10 max-md:opacity-100",
+        "opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100",
+        side === "left"
+          ? "md:top-1/2 md:right-full md:mr-1 md:-translate-y-1/2"
+          : "md:top-1/2 md:left-full md:ml-1 md:-translate-y-1/2 md:right-auto",
         className,
       )}
     >
@@ -120,21 +124,26 @@ function MessageActionsMenu({
 
       const rect = trigger.getBoundingClientRect()
       const gap = 4
-      const style: CSSProperties = {
+      const menuWidth = 160
+      const viewportPadding = 8
+      let left =
+        menuAlign === "end" ? rect.right - menuWidth : rect.left
+      left = Math.max(
+        viewportPadding,
+        Math.min(left, window.innerWidth - menuWidth - viewportPadding),
+      )
+      const top = Math.min(
+        rect.bottom + gap,
+        window.innerHeight - viewportPadding,
+      )
+
+      setMenuStyle({
         position: "fixed",
-        top: rect.bottom + gap,
+        top,
+        left,
         minWidth: "10rem",
         zIndex: 200,
-      }
-
-      if (menuAlign === "end") {
-        style.left = rect.right
-        style.transform = "translateX(-100%)"
-      } else {
-        style.left = rect.left
-      }
-
-      setMenuStyle(style)
+      })
     }
 
     updatePosition()
@@ -362,7 +371,9 @@ export function Message({
                 bubbleRadius(groupedWithPrevious, groupedWithNext, true),
               )}
             >
-              <p className={bubbleTextClass}>{message.content}</p>
+              <p className={bubbleTextClass}>
+                <LinkifiedText text={message.content} />
+              </p>
             </div>
           </div>
           {showMetadataFooter && (
@@ -448,7 +459,9 @@ export function Message({
                   <AgentAiBadge compact />
                 </div>
               )}
-              <p className={bubbleTextClass}>{message.content}</p>
+              <p className={bubbleTextClass}>
+                <LinkifiedText text={message.content} />
+              </p>
             </div>
           </div>
           {threadControl}

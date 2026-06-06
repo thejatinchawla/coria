@@ -43,7 +43,8 @@ export async function proxy(request: NextRequest) {
     if (
       (tokenHash || authCode) &&
       pathname !== "/auth/confirm" &&
-      !pathname.startsWith("/auth/callback")
+      !pathname.startsWith("/auth/callback") &&
+      !pathname.startsWith("/api/integrations/github/callback")
     ) {
       const url = request.nextUrl.clone()
       url.pathname = "/auth/confirm"

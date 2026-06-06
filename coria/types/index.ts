@@ -149,12 +149,18 @@ export type MessageSearchHit = {
 
 export type IntegrationStatus = "active" | "error" | "disconnected"
 
+export type IntegrationProviderMetadata = {
+  auth_method?: "oauth" | "pat"
+  github_login?: string
+}
+
 export type Integration = {
   id: string
   workspace_id: string
   provider: string
   status: IntegrationStatus
   created_at: string
+  provider_metadata?: IntegrationProviderMetadata | null
 }
 
 export type AgentTriggerType = "cron" | "keyword"

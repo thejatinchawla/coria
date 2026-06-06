@@ -2,6 +2,7 @@
 
 import { AgentAvatar } from "@/components/AgentAvatar"
 import { AgentAiBadge } from "@/components/AgentAiBadge"
+import { LinkifiedText } from "@/components/LinkifiedText"
 
 export function StreamingMessage({
   senderName,
@@ -24,7 +25,7 @@ export function StreamingMessage({
         </div>
         <div className="w-fit rounded-2xl rounded-tl-sm bg-muted px-3 py-2 ring-1 ring-violet-500/15 sm:px-4">
           <p className="text-sm whitespace-pre-wrap break-words">
-            {content}
+            <LinkifiedText text={content} />
             <span className="ml-0.5 inline-block h-4 w-0.5 animate-pulse bg-foreground/60 align-middle" />
           </p>
         </div>

@@ -19,3 +19,11 @@ export function messageMember(
   }
   return membersById[message.sender_id]
 }
+
+export function messageSenderName(
+  message: Message,
+  membersById?: Record<string, Member>,
+): string {
+  const member = messageMember(message, membersById)
+  return member?.display_name?.trim() || message.sender_name
+}

@@ -27,7 +27,7 @@ export function ActionBlockCard({
         Action requires approval
       </div>
       <p className="mb-1 text-sm font-medium">{block.summary}</p>
-      <p className="mb-3 font-mono text-xs text-muted-foreground">
+      <p className="mb-3 break-all font-mono text-xs text-muted-foreground">
         {block.tool_name}
       </p>
 

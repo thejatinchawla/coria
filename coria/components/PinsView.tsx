@@ -2,6 +2,7 @@
 
 import { Pin, PinOff } from "lucide-react"
 import { MessageSenderAvatar, SenderNameWithProfile } from "@/components/MessageSenderAvatar"
+import { LinkifiedText } from "@/components/LinkifiedText"
 import { MessageTimestamp } from "@/components/MessageTimestamp"
 import { messageAgent, messageMember } from "@/lib/message-sender"
 import type { Agent, Member, Message } from "@/types"
@@ -75,7 +76,7 @@ export function PinsView({
                       onClick={() => onSelect(message)}
                       className="mt-1 w-full text-left text-sm leading-relaxed whitespace-pre-wrap break-words hover:underline"
                     >
-                      {message.content}
+                      <LinkifiedText text={message.content} />
                     </button>
                   </div>
                   <button
