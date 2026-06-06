@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { Send } from "lucide-react"
 import { createClient } from "@/lib/supabase"
 import { streamInvoke } from "@/lib/stream-invoke"
@@ -9,6 +9,7 @@ import { useToast } from "@/components/Toast"
 import { AgentAvatar } from "@/components/AgentAvatar"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
+import { useIsMobile } from "@/lib/use-mobile"
 import type { ActionBlock, Agent, Message } from "@/types"
 
 function agentDescription(agent: Agent): string {
@@ -17,7 +18,14 @@ function agentDescription(agent: Agent): string {
   return "AI teammate"
 }
 
-function messagePlaceholder(channelSlug: string, agents: Agent[]): string {
+function messagePlaceholder(
+  channelSlug: string,
+  agents: Agent[],
+  compact: boolean,
+  directAgent: Agent | null,
+): string {
+  if (directAgent) return `Message ${directAgent.name}…`
+  if (compact) return `Message #${channelSlug}`
   const active = agents.filter((a) => a.status === "active")
   if (active.length === 0) {
     return `Message #${channelSlug}`
@@ -49,6 +57,9 @@ export function MessageInput({
   senderName,
   threadId = null,
   compact = false,
+  directAgentId = null,
+  invokableAgents,
+  skipKeywordTriggers = false,
   onStreamStart,
   onStreamStatus,
   onStreamToken,
@@ -56,6 +67,8 @@ export function MessageInput({
   onStreamError,
   onActionBlock,
   onMessageSent,
+  prefill,
+  onPrefillApplied,
 }: {
   channelId: string
   channelSlug: string
@@ -67,6 +80,12 @@ export function MessageInput({
   senderName: string
   threadId?: string | null
   compact?: boolean
+  /** When set, every message auto-invokes this agent (direct agent chat). */
+  directAgentId?: string | null
+  /** Agents that can be @mentioned; defaults to all workspace agents. */
+  invokableAgents?: Agent[]
+  /** Skip keyword trigger fan-out (e.g. teammate DMs without agents). */
+  skipKeywordTriggers?: boolean
   onStreamStart?: (agent: Pick<Agent, "name" | "color" | "avatar_url">) => void
   onStreamStatus?: (status: string) => void
   onStreamToken?: (token: string) => void
@@ -74,20 +93,74 @@ export function MessageInput({
   onStreamError?: () => void
   onActionBlock?: (block: ActionBlock) => void
   onMessageSent?: (message: Message) => void
+  prefill?: string | null
+  onPrefillApplied?: () => void
 }) {
   const { toast } = useToast()
+  const isMobile = useIsMobile()
   const [text, setText] = useState("")
   const [sending, setSending] = useState(false)
   const [hintIndex, setHintIndex] = useState(0)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const formRef = useRef<HTMLFormElement>(null)
+  const refocusAfterSendRef = useRef(false)
 
-  const hintAgents = useMemo(() => matchingAgents(text, agents), [text, agents])
-  const placeholder = useMemo(
-    () => messagePlaceholder(channelSlug, agents),
-    [channelSlug, agents],
+  const directAgent = useMemo(
+    () =>
+      directAgentId
+        ? (agents.find((a) => a.id === directAgentId) ?? null)
+        : null,
+    [agents, directAgentId],
   )
-  const showAgentHint = hintAgents.length > 0
-  const canSend = text.trim().length > 0 && !sending && !agentsGloballyPaused
+  const mentionAgents = invokableAgents ?? agents
+  const hintAgents = useMemo(
+    () => matchingAgents(text, mentionAgents),
+    [text, mentionAgents],
+  )
+  const placeholder = useMemo(() => {
+    if (skipKeywordTriggers && mentionAgents.length === 0) {
+      return "Message…"
+    }
+    return messagePlaceholder(channelSlug, mentionAgents, isMobile, directAgent)
+  }, [
+    channelSlug,
+    mentionAgents,
+    isMobile,
+    directAgent,
+    skipKeywordTriggers,
+  ])
+  const showAgentHint = hintAgents.length > 0 && !agentsGloballyPaused
+  const canSend = text.trim().length > 0 && !sending
+
+  useEffect(() => {
+    if (!prefill) return
+    setText(prefill)
+    onPrefillApplied?.()
+    requestAnimationFrame(() => {
+      const textarea = textareaRef.current
+      if (!textarea) return
+      textarea.focus()
+      textarea.style.height = "auto"
+      textarea.style.height = `${Math.min(textarea.scrollHeight, 160)}px`
+    })
+  }, [prefill, onPrefillApplied])
+
+  useEffect(() => {
+    if (sending || !refocusAfterSendRef.current) return
+    refocusAfterSendRef.current = false
+    const textarea = textareaRef.current
+    if (!textarea) return
+    requestAnimationFrame(() => {
+      textarea.focus({ preventScroll: true })
+      formRef.current?.scrollIntoView({ block: "end", behavior: "instant" })
+    })
+  }, [sending])
+
+  function keepComposerVisible() {
+    requestAnimationFrame(() => {
+      formRef.current?.scrollIntoView({ block: "end", behavior: "instant" })
+    })
+  }
 
   async function send() {
     const content = text.trim()
@@ -100,6 +173,9 @@ export function MessageInput({
       sender_name: senderName,
       sender_type: "human",
       content,
+    }
+    if (memberId) {
+      insertRow.sender_id = memberId
     }
     if (threadId) {
       insertRow.thread_id = threadId
@@ -121,6 +197,11 @@ export function MessageInput({
       onMessageSent?.(inserted as Message)
     }
 
+    setText("")
+    setHintIndex(0)
+    if (textareaRef.current) textareaRef.current.style.height = "auto"
+    refocusAfterSendRef.current = true
+
     if (inserted?.id) {
       fetch("/api/memory/embed", {
         method: "POST",
@@ -132,7 +213,7 @@ export function MessageInput({
     }
 
     // Keyword triggers (skip @mention invokes — backend debounces per trigger)
-    if (!threadId) {
+    if (!threadId && !skipKeywordTriggers) {
       fetch("/api/triggers/keyword", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -145,20 +226,29 @@ export function MessageInput({
       })
     }
 
-    const mentionMatch = content.match(/^@(\w+)\s+([\s\S]+)/i)
-    if (mentionMatch) {
-      const slug = mentionMatch[1].toLowerCase()
-      const userMessage = mentionMatch[2].trim()
+    const mentionMatch = directAgentId
+      ? null
+      : content.match(/^@(\w+)\s+([\s\S]+)/i)
+    if (directAgentId || mentionMatch) {
+      if (agentsGloballyPaused) {
+        toast("All agents are paused. Resume them in Settings → Agents.")
+        setSending(false)
+        return
+      }
+      const slug = mentionMatch?.[1]?.toLowerCase()
+      const userMessage = mentionMatch?.[2]?.trim() ?? content
       const resolvedAgentId =
-        (await fetchAgentBySlug(supabase, workspaceId, slug)) ??
+        directAgentId ??
+        (await fetchAgentBySlug(supabase, workspaceId, slug!)) ??
         defaultAgentId
       const resolvedAgent =
-        agents.find((a) => a.id === resolvedAgentId) ??
-        agents.find((a) => a.mention_slug === slug) ??
+        mentionAgents.find((a) => a.id === resolvedAgentId) ??
+        (slug ? mentionAgents.find((a) => a.mention_slug === slug) : null) ??
+        directAgent ??
         null
 
       onStreamStart?.({
-        name: resolvedAgent?.name ?? slug,
+        name: resolvedAgent?.name ?? slug ?? "Agent",
         color: resolvedAgent?.color,
         avatar_url: resolvedAgent?.avatar_url,
       })
@@ -187,14 +277,12 @@ export function MessageInput({
         onStreamError?.()
       } finally {
         onStreamEnd?.()
+        setSending(false)
       }
+      return
     }
 
     setSending(false)
-    setText("")
-    setHintIndex(0)
-    if (textareaRef.current) textareaRef.current.style.height = "auto"
-    textareaRef.current?.focus()
   }
 
   function completeMention(slug: string) {
@@ -244,14 +332,15 @@ export function MessageInput({
 
   return (
     <form
+      ref={formRef}
       onSubmit={(e) => {
         e.preventDefault()
         void send()
       }}
       className={
         compact
-          ? "shrink-0"
-          : "shrink-0 border-t px-3 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-6 sm:py-4"
+          ? "shrink-0 bg-background"
+          : "shrink-0 border-t bg-background px-3 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-6 sm:py-4"
       }
     >
       <div className={compact ? "" : "relative mx-auto max-w-3xl"}>
@@ -277,6 +366,7 @@ export function MessageInput({
               >
                 <AgentAvatar
                   name={agent.name}
+                  mentionSlug={agent.mention_slug}
                   color={agent.color}
                   avatarUrl={agent.avatar_url}
                   size="sm"
@@ -298,25 +388,23 @@ export function MessageInput({
             value={text}
             onChange={handleChange}
             onKeyDown={handleKeyDown}
+            onFocus={keepComposerVisible}
             rows={1}
-            placeholder={
-              agentsGloballyPaused
-                ? "All agents are paused"
-                : threadId
-                  ? "Reply in thread…"
-                  : placeholder
-            }
-            disabled={sending || agentsGloballyPaused}
+            enterKeyHint="send"
+            placeholder={threadId ? "Reply in thread…" : placeholder}
+            aria-busy={sending}
             aria-autocomplete="list"
             aria-controls={showAgentHint ? "agent-mention-hint" : undefined}
-            className="flex min-h-9 flex-1 resize-none rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50"
+            className="flex min-h-9 flex-1 resize-none rounded-md border border-input bg-transparent px-3 py-2 text-base shadow-xs outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 sm:min-h-8 sm:py-1.5 sm:text-sm"
           />
           <Button
             type="submit"
             size="icon"
+            loading={sending}
             disabled={!canSend}
             aria-label="Send message"
             className="size-9 shrink-0"
+            onPointerDown={(e) => e.preventDefault()}
           >
             <Send className="size-4" />
           </Button>

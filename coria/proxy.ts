@@ -37,6 +37,23 @@ export async function proxy(request: NextRequest) {
     } = await supabase.auth.getUser()
 
     const { pathname } = request.nextUrl
+
+    const tokenHash = request.nextUrl.searchParams.get("token_hash")
+    const authCode = request.nextUrl.searchParams.get("code")
+    if (
+      (tokenHash || authCode) &&
+      pathname !== "/auth/confirm" &&
+      !pathname.startsWith("/auth/callback") &&
+      !pathname.startsWith("/api/integrations/github/callback")
+    ) {
+      const url = request.nextUrl.clone()
+      url.pathname = "/auth/confirm"
+      if (!url.searchParams.has("next")) {
+        url.searchParams.set("next", "/auth/join")
+      }
+      return NextResponse.redirect(url)
+    }
+
     const isAuthRoute =
       pathname.startsWith("/login") ||
       pathname.startsWith("/auth") ||
@@ -48,16 +65,29 @@ export async function proxy(request: NextRequest) {
       return NextResponse.redirect(url)
     }
 
-    if (user && pathname === "/login") {
-      const url = request.nextUrl.clone()
-      url.pathname = "/"
-      url.searchParams.set("channel", "general")
-      const redirect = NextResponse.redirect(url)
-      supabaseResponse.cookies.getAll().forEach((cookie) => {
-        redirect.cookies.set(cookie.name, cookie.value)
-      })
-      return redirect
+    if (pathname === "/") {
+      const dm = request.nextUrl.searchParams.get("dm")?.trim()
+      const agent = request.nextUrl.searchParams.get("agent")?.trim()
+      const channel = request.nextUrl.searchParams.get("channel")?.trim()
+      const stored = dm
+        ? `dm:${dm}`
+        : agent
+          ? `agent:${agent}`
+          : channel
+            ? `channel:${channel}`
+            : null
+      if (stored) {
+        supabaseResponse.cookies.set("coria_last_channel", stored, {
+          path: "/",
+          sameSite: "lax",
+          maxAge: 60 * 60 * 24 * 365,
+        })
+      }
     }
+
+    // Do not auto-redirect authenticated users away from /login here.
+    // Invite links often land on /login#access_token=…; client AuthUrlHandler
+    // must finish setSession and route to /auth/join before any server redirect.
 
     return supabaseResponse
   } catch (error) {

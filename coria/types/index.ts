@@ -3,7 +3,7 @@
 export type SenderType = "human" | "agent"
 
 export type MemberRole = "owner" | "admin" | "member"
-export type ChannelType = "hybrid" | "human_only"
+export type ChannelType = "hybrid" | "human_only" | "direct"
 export type AgentStatus = "active" | "paused"
 
 export type Workspace = {
@@ -19,6 +19,10 @@ export type Channel = {
   name: string
   slug: string
   type: ChannelType
+  description?: string | null
+  direct_agent_id?: string | null
+  direct_peer_member_id?: string | null
+  created_by_member_id?: string | null
   created_at: string
 }
 
@@ -148,12 +152,18 @@ export type MessageSearchHit = {
 
 export type IntegrationStatus = "active" | "error" | "disconnected"
 
+export type IntegrationProviderMetadata = {
+  auth_method?: "oauth" | "pat"
+  github_login?: string
+}
+
 export type Integration = {
   id: string
   workspace_id: string
   provider: string
   status: IntegrationStatus
   created_at: string
+  provider_metadata?: IntegrationProviderMetadata | null
 }
 
 export type AgentTriggerType = "cron" | "keyword"

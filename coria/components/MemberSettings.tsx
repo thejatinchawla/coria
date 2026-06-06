@@ -157,7 +157,7 @@ export function MemberSettings({
             {isOwner && <option value="owner">Owner</option>}
           </select>
         </div>
-        <Button type="submit" size="sm" disabled={saving}>
+        <Button type="submit" size="sm" loading={saving}>
           <UserPlus className="mr-1 size-3.5" />
           Send invite
         </Button>
@@ -165,6 +165,9 @@ export function MemberSettings({
 
       <section className="space-y-2">
         <h2 className="text-sm font-medium">Team ({members.length})</h2>
+        <p className="text-xs text-muted-foreground">
+          Owners and admins can change roles or remove members from the workspace.
+        </p>
         <ul className="space-y-2">
           {members.map((m) => (
             <li
@@ -172,7 +175,7 @@ export function MemberSettings({
               className="flex flex-col gap-2 rounded-lg border p-3 sm:flex-row sm:items-center"
             >
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium">
+                <p className="truncate text-sm font-medium">
                   {m.display_name}
                   {m.id === currentMemberId && (
                     <span className="ml-2 text-xs text-muted-foreground">(you)</span>
@@ -202,7 +205,7 @@ export function MemberSettings({
                       variant="ghost"
                       size="icon"
                       className="size-8 text-destructive"
-                      disabled={saving}
+                      loading={saving}
                       aria-label="Remove member"
                       onClick={() => void removeMember(m.id)}
                     >
@@ -227,10 +230,12 @@ export function MemberSettings({
             {invites.map((inv) => (
               <li
                 key={inv.id}
-                className="flex items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm"
+                className="flex flex-col gap-2 rounded-lg border px-3 py-2 text-sm sm:flex-row sm:items-center sm:justify-between"
               >
-                <span className="min-w-0 text-muted-foreground">
-                  {inv.email} · {inv.role} · expires{" "}
+                <span className="min-w-0 break-words text-muted-foreground">
+                  <span className="font-medium text-foreground">{inv.email}</span>
+                  {" · "}
+                  {inv.role} · expires{" "}
                   {new Date(inv.expires_at).toLocaleDateString()}
                 </span>
                 <Button
@@ -238,7 +243,7 @@ export function MemberSettings({
                   variant="ghost"
                   size="sm"
                   className="shrink-0 text-destructive hover:text-destructive"
-                  disabled={saving}
+                  loading={saving}
                   onClick={() => void revokeInvite(inv.id)}
                 >
                   <Trash2 className="mr-1 size-3.5" />

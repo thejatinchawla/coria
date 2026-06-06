@@ -192,7 +192,7 @@ REVOKE ALL ON FUNCTION public.match_channel_memory(uuid, vector, int, float) FRO
 GRANT EXECUTE ON FUNCTION public.match_channel_memory(uuid, vector, int, float) TO service_role;
 
 -- ---------------------------------------------------------------------------
--- tool policy + Aria workspace_search
+-- tool policy: workspace_search (assign to custom agents via Settings → Agents)
 -- ---------------------------------------------------------------------------
 INSERT INTO tool_policies (workspace_id, tool_name, requires_approval, enabled)
 VALUES
@@ -200,11 +200,6 @@ VALUES
 ON CONFLICT (workspace_id, tool_name) DO UPDATE
   SET requires_approval = EXCLUDED.requires_approval,
       enabled = EXCLUDED.enabled;
-
-UPDATE agents
-SET allowed_tools = ARRAY['web_search', 'workspace_search']::text[]
-WHERE workspace_id = '00000000-0000-4000-8000-000000000001'
-  AND mention_slug = 'aria';
 
 -- Demo #product channel for cross-channel memory exit test
 INSERT INTO channels (id, workspace_id, name, slug, type)

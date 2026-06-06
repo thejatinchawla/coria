@@ -71,7 +71,7 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
     <ConfirmContext.Provider value={{ confirm }}>
       {children}
       {request && (
-        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[110] flex items-end justify-center p-4 sm:items-center">
           <button
             type="button"
             aria-label="Close dialog"
@@ -85,7 +85,7 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
             aria-describedby={
               request.description ? "confirm-dialog-description" : undefined
             }
-            className="relative z-10 w-full max-w-md rounded-lg border bg-background p-6 shadow-lg"
+            className="relative z-10 w-full max-w-md rounded-lg border bg-background p-6 shadow-lg sm:rounded-lg"
           >
             <h2
               id="confirm-dialog-title"
@@ -104,7 +104,7 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
                 {request.description}
               </p>
             )}
-            <div className="mt-6 flex justify-end gap-2">
+            <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
               <Button
                 type="button"
                 variant="outline"

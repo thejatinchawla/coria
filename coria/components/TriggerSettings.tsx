@@ -53,11 +53,7 @@ const CRON_PRESETS = [
   { label: "Every 6 hours", expr: "0 */6 * * *" },
 ] as const
 
-function formFromTrigger(
-  trigger: AgentTrigger,
-  agents: Agent[],
-  channels: Channel[],
-): TriggerForm {
+function formFromTrigger(trigger: AgentTrigger): TriggerForm {
   const config = trigger.config ?? {}
   return {
     agent_id: trigger.agent_id,
@@ -237,7 +233,7 @@ export function TriggerSettings({
   function startEdit(trigger: AgentTrigger) {
     setEditingId(trigger.id)
     setShowCreate(false)
-    setForm(formFromTrigger(trigger, agents, channels))
+    setForm(formFromTrigger(trigger))
   }
 
   const formVisible = showCreate || editingId
@@ -300,11 +296,12 @@ export function TriggerSettings({
                       : ""}
                   </p>
                 </div>
-                <div className="flex shrink-0 flex-wrap gap-1">
+                <div className="flex shrink-0 flex-wrap gap-1 self-stretch sm:self-auto">
                   <Button
                     variant="ghost"
                     size="sm"
-                    disabled={saving || runningId === trigger.id}
+                    loading={runningId === trigger.id}
+                    disabled={saving}
                     onClick={() => void runNow(trigger.id)}
                   >
                     <Play className="mr-1 size-3.5" />
@@ -313,7 +310,7 @@ export function TriggerSettings({
                   <Button
                     variant="ghost"
                     size="sm"
-                    disabled={saving}
+                    loading={saving}
                     onClick={() => void toggleEnabled(trigger)}
                   >
                     {trigger.enabled ? "Disable" : "Enable"}
@@ -321,7 +318,7 @@ export function TriggerSettings({
                   <Button
                     variant="ghost"
                     size="sm"
-                    disabled={saving}
+                    loading={saving}
                     onClick={() => startEdit(trigger)}
                   >
                     Edit
@@ -330,7 +327,7 @@ export function TriggerSettings({
                     variant="ghost"
                     size="icon"
                     className="size-8 text-destructive"
-                    disabled={saving}
+                    loading={saving}
                     aria-label="Delete trigger"
                     onClick={() => void deleteTrigger(trigger.id)}
                   >
@@ -516,7 +513,7 @@ export function TriggerSettings({
           )}
 
           <div className="flex gap-2">
-            <Button type="submit" disabled={saving}>
+            <Button type="submit" loading={saving}>
               {editingId ? "Save changes" : "Create trigger"}
             </Button>
             <Button

@@ -1,5 +1,6 @@
 import * as React from "react"
 import { cva, type VariantProps } from "class-variance-authority"
+import { Loader2 } from "lucide-react"
 import { Slot } from "radix-ui"
 
 import { cn } from "@/lib/utils"
@@ -43,21 +44,48 @@ function Button({
   variant = "default",
   size = "default",
   asChild = false,
+  loading = false,
+  disabled,
+  children,
   ...props
 }: React.ComponentProps<"button"> &
   VariantProps<typeof buttonVariants> & {
     asChild?: boolean
+    loading?: boolean
   }) {
-  const Comp = asChild ? Slot.Root : "button"
+  const isIconSize =
+    size === "icon" ||
+    size === "icon-xs" ||
+    size === "icon-sm" ||
+    size === "icon-lg"
+
+  const sharedProps = {
+    "data-slot": "button",
+    "data-variant": variant,
+    "data-size": size,
+    className: cn(buttonVariants({ variant, size, className })),
+    disabled: disabled || loading,
+    "aria-busy": loading || undefined,
+    ...props,
+  }
+
+  // Slot merges onto a single child — never add spinner siblings when asChild is set.
+  if (asChild) {
+    const slotted = React.Children.toArray(children).filter(
+      (node) => !(typeof node === "string" && node.trim() === ""),
+    )
+    const child = slotted[0]
+    if (slotted.length !== 1 || !React.isValidElement(child)) {
+      throw new Error("Button with `asChild` must have a single React element child.")
+    }
+    return <Slot.Root {...sharedProps}>{child}</Slot.Root>
+  }
 
   return (
-    <Comp
-      data-slot="button"
-      data-variant={variant}
-      data-size={size}
-      className={cn(buttonVariants({ variant, size, className }))}
-      {...props}
-    />
+    <button {...sharedProps}>
+      {loading && <Loader2 className="size-4 animate-spin" aria-hidden />}
+      {!(loading && isIconSize) && children}
+    </button>
   )
 }
 

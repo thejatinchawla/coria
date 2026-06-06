@@ -172,7 +172,7 @@ export function AgentSettings({
             <Button
               variant={settings.agents_globally_paused ? "destructive" : "outline"}
               size="sm"
-              disabled={saving}
+              loading={saving}
               onClick={() =>
                 void patchSettings({
                   agents_globally_paused: !settings.agents_globally_paused,
@@ -216,7 +216,7 @@ export function AgentSettings({
                 <Button
                   variant="ghost"
                   size="sm"
-                  disabled={saving}
+                  loading={saving}
                   onClick={() => void patchSettings({ tool_budget_used: 0 })}
                 >
                   Reset
@@ -250,10 +250,11 @@ export function AgentSettings({
           {agents.map((agent) => (
             <li
               key={agent.id}
-              className="flex items-center gap-3 rounded-lg border p-3"
+              className="flex flex-col gap-3 rounded-lg border p-3 sm:flex-row sm:items-center"
             >
               <AgentAvatar
                 name={agent.name}
+                mentionSlug={agent.mention_slug}
                 color={agent.color}
                 avatarUrl={agent.avatar_url}
                 size="sm"
@@ -270,12 +271,12 @@ export function AgentSettings({
                   {agent.template_id ? ` · ${agent.template_id}` : ""}
                 </p>
               </div>
-              <div className="flex shrink-0 gap-1">
+              <div className="flex shrink-0 gap-1 self-end sm:self-auto">
                 <Button
                   variant="ghost"
                   size="icon"
                   className="size-8"
-                  disabled={saving}
+                  loading={saving}
                   aria-label={agent.status === "paused" ? "Resume agent" : "Pause agent"}
                   onClick={() =>
                     void patchAgent(agent.id, {
@@ -292,7 +293,7 @@ export function AgentSettings({
                 <Button
                   variant="ghost"
                   size="sm"
-                  disabled={saving}
+                  loading={saving}
                   onClick={() => startEdit(agent)}
                 >
                   Edit
@@ -389,7 +390,7 @@ export function AgentSettings({
             />
           </label>
           <div className="flex gap-2">
-            <Button type="submit" disabled={saving}>
+            <Button type="submit" loading={saving}>
               {editingId ? "Save changes" : "Create agent"}
             </Button>
             <Button

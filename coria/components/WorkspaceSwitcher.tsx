@@ -1,11 +1,11 @@
 "use client"
 
 import { useEffect, useRef, useState, useTransition } from "react"
-import { useRouter } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import { Check, ChevronsUpDown, Plus } from "lucide-react"
 import type { Workspace } from "@/types"
 import { CreateWorkspaceForm } from "@/components/CreateWorkspaceForm"
-import { LoadingButton } from "@/components/ui/loading-button"
+import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
 export function WorkspaceSwitcher({
@@ -18,6 +18,7 @@ export function WorkspaceSwitcher({
   activeChannelSlug: string
 }) {
   const router = useRouter()
+  const pathname = usePathname()
   const [open, setOpen] = useState(false)
   const [creating, setCreating] = useState(false)
   const [switchingId, setSwitchingId] = useState<string | null>(null)
@@ -50,8 +51,12 @@ export function WorkspaceSwitcher({
         body: JSON.stringify({ workspace_id: workspaceId }),
       })
       if (!res.ok) return
+      const destination = pathname.startsWith("/settings")
+        ? pathname
+        : `/?channel=${activeChannelSlug}`
       startTransition(() => {
-        router.push(`/?channel=${activeChannelSlug}`)
+        router.push(destination)
+        router.refresh()
       })
     } finally {
       setSwitchingId(null)
@@ -60,22 +65,27 @@ export function WorkspaceSwitcher({
 
   return (
     <div ref={menuRef} className="relative min-w-0 flex-1">
-      <button
+      <Button
         type="button"
+        variant="ghost"
+        loading={isPending || Boolean(switchingId)}
         onClick={() => {
           setOpen((v) => !v)
           setCreating(false)
         }}
-        disabled={isPending || Boolean(switchingId)}
-        className="flex w-full min-w-0 items-center gap-2 rounded-md px-1 py-0.5 text-left hover:bg-sidebar-accent/60"
+        className={cn(
+          "h-9 w-full min-w-0 justify-between gap-3 rounded-md px-2.5 font-semibold",
+          "hover:bg-sidebar-accent/60",
+          open && "bg-sidebar-accent/60",
+        )}
         aria-expanded={open}
         aria-haspopup="listbox"
       >
-        <span className="truncate text-sm font-semibold">
+        <span className="min-w-0 flex-1 truncate text-left text-sm font-semibold">
           {active?.name ?? "Workspace"}
         </span>
-        <ChevronsUpDown className="size-3.5 shrink-0 text-muted-foreground" />
-      </button>
+        <ChevronsUpDown className="size-4 shrink-0 text-muted-foreground" />
+      </Button>
 
       {open && (
         <div className="absolute left-0 top-full z-50 mt-1 w-[min(18rem,calc(100vw-2rem))] rounded-md border bg-popover p-1 text-popover-foreground shadow-md">
@@ -90,14 +100,16 @@ export function WorkspaceSwitcher({
                   const switching = switchingId === workspace.id
                   return (
                     <li key={workspace.id}>
-                      <button
+                      <Button
                         type="button"
+                        variant="ghost"
                         role="option"
                         aria-selected={selected}
-                        disabled={Boolean(switchingId)}
+                        loading={switching}
+                        disabled={Boolean(switchingId) && !switching}
                         onClick={() => void switchWorkspace(workspace.id)}
                         className={cn(
-                          "flex w-full items-center gap-2 rounded-sm px-2 py-2 text-left text-sm hover:bg-accent",
+                          "h-auto w-full justify-start gap-2 rounded-sm px-2 py-2 text-sm font-normal hover:bg-accent",
                           selected && "bg-accent/70",
                         )}
                       >
@@ -107,15 +119,10 @@ export function WorkspaceSwitcher({
                             selected ? "opacity-100" : "opacity-0",
                           )}
                         />
-                        <span className="min-w-0 flex-1 truncate">
+                        <span className="min-w-0 flex-1 truncate text-left">
                           {workspace.name}
                         </span>
-                        {switching && (
-                          <span className="text-xs text-muted-foreground">
-                            …
-                          </span>
-                        )}
-                      </button>
+                      </Button>
                     </li>
                   )
                 })}
@@ -140,7 +147,7 @@ export function WorkspaceSwitcher({
                   setCreating(false)
                 }}
               />
-              <LoadingButton
+              <Button
                 type="button"
                 variant="ghost"
                 size="sm"
@@ -148,7 +155,7 @@ export function WorkspaceSwitcher({
                 onClick={() => setCreating(false)}
               >
                 Back
-              </LoadingButton>
+              </Button>
             </div>
           )}
         </div>

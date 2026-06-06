@@ -1,22 +1,26 @@
 "use client"
 
 import { useState } from "react"
-import Link from "next/link"
 import {
   Menu,
   MessageSquare,
+  Pencil,
   Pin,
   Search,
-  Settings,
   ShieldAlert,
+  Users,
   X,
 } from "lucide-react"
-import type { MessageSearchHit } from "@/types"
+import type { Agent, Channel, Member, MessageSearchHit } from "@/types"
+import { AgentAvatar } from "@/components/AgentAvatar"
+import { AgentAiBadge } from "@/components/AgentAiBadge"
+import { MemberAvatar } from "@/components/MemberAvatar"
+import { ChannelSettingsDialog } from "@/components/ChannelSettingsDialog"
+import { LinkifiedText } from "@/components/LinkifiedText"
 import { cn } from "@/lib/utils"
-import { chatUrl } from "@/lib/settings-url"
-import type { SettingsId } from "@/lib/settings-links"
+import { useSidebarMenu } from "@/components/AppShell"
 
-export type ChannelTab = "messages" | "pins"
+export type ChannelTab = "messages" | "pins" | "members"
 
 function ChannelTabButton({
   active,
@@ -42,8 +46,9 @@ function ChannelTabButton({
           : "text-muted-foreground hover:text-foreground",
       )}
     >
-      <Icon className="size-4 shrink-0" />
-      <span>{label}</span>
+      <Icon className="size-4 shrink-0" aria-hidden />
+      <span className="hidden sm:inline">{label}</span>
+      <span className="sr-only sm:hidden">{label}</span>
       {count !== undefined && count > 0 && (
         <span
           className={cn(
@@ -67,12 +72,15 @@ function ChannelTabButton({
 }
 
 export function ChannelHeader({
-  channelName,
-  channelSlug,
+  channel,
   workspaceName,
-  channelDescription,
+  directAgent = null,
+  directMember = null,
+  canManageChannel = false,
+  onChannelUpdated,
   activeTab = "messages",
   pinnedCount = 0,
+  memberCount = 0,
   onTabChange,
   pendingApprovalCount = 0,
   searchQuery = "",
@@ -80,30 +88,38 @@ export function ChannelHeader({
   onSearchChange,
   onSearchSelect,
   onMenuOpen,
-  settingsSection = null,
 }: {
-  channelName: string
-  channelSlug: string
+  channel: Channel
   workspaceName: string
-  channelDescription?: string
+  directAgent?: Agent | null
+  directMember?: Member | null
+  canManageChannel?: boolean
+  onChannelUpdated?: (channel: Channel) => void
   activeTab?: ChannelTab
   pinnedCount?: number
+  memberCount?: number
   onTabChange?: (tab: ChannelTab) => void
   pendingApprovalCount?: number
   searchQuery?: string
   searchResults?: MessageSearchHit[]
   onSearchChange?: (query: string) => void
   onSearchSelect?: (hit: MessageSearchHit) => void
-  onMenuOpen: () => void
-  settingsSection?: SettingsId | null
+  onMenuOpen?: () => void
 }) {
+  const { openSidebar } = useSidebarMenu()
   const [searchOpen, setSearchOpen] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
 
+  const isDirect = channel.type === "direct"
+  const directTitle =
+    directAgent?.name ?? directMember?.display_name ?? channel.name
   const subtitle =
-    channelDescription ??
-    (channelName === "general"
-      ? "Workspace-wide updates and announcements"
-      : workspaceName)
+    channel.description?.trim() ||
+    (isDirect
+      ? "Direct message"
+      : channel.name === "general"
+        ? "Workspace-wide updates and announcements"
+        : workspaceName)
 
   return (
     <header className="relative shrink-0 border-b bg-background">
@@ -112,33 +128,66 @@ export function ChannelHeader({
           <button
             type="button"
             aria-label="Open menu"
-            onClick={onMenuOpen}
+            onClick={onMenuOpen ?? openSidebar}
             className="-ml-1 shrink-0 rounded-md p-2 text-muted-foreground hover:bg-muted md:hidden"
           >
             <Menu className="size-5" />
           </button>
           <div className="min-w-0">
-            <div className="flex min-w-0 items-baseline gap-2">
-              <h1 className="truncate text-[15px] font-bold">#{channelName}</h1>
-              <span className="hidden truncate text-sm text-muted-foreground sm:inline">
-                {subtitle}
-              </span>
+            <div className="flex min-w-0 items-center gap-2">
+              {isDirect &&
+                (directAgent ? (
+                  <AgentAvatar
+                    name={directAgent.name}
+                    mentionSlug={directAgent.mention_slug}
+                    color={directAgent.color}
+                    avatarUrl={directAgent.avatar_url}
+                    size="sm"
+                  />
+                ) : directMember ? (
+                  <MemberAvatar
+                    member={directMember}
+                    displayName={directMember.display_name}
+                    size="sm"
+                  />
+                ) : null)}
+              <div className="min-w-0">
+                <div className="flex min-w-0 items-baseline gap-2">
+                  <h1 className="truncate text-[15px] font-bold">
+                    {isDirect ? directTitle : `#${channel.name}`}
+                  </h1>
+                  {directAgent && <AgentAiBadge compact />}
+                  <span className="hidden truncate text-sm text-muted-foreground sm:inline">
+                    {subtitle}
+                  </span>
+                </div>
+                <span className="truncate text-xs text-muted-foreground sm:hidden">
+                  {subtitle}
+                </span>
+              </div>
             </div>
-            <span className="truncate text-xs text-muted-foreground sm:hidden">
-              {subtitle}
-            </span>
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-0.5">
+          {canManageChannel && !isDirect && onChannelUpdated && (
+            <button
+              type="button"
+              aria-label="Edit channel"
+              onClick={() => setSettingsOpen(true)}
+              className="rounded-md p-2 text-muted-foreground hover:bg-muted"
+            >
+              <Pencil className="size-5" />
+            </button>
+          )}
           {pendingApprovalCount > 0 && (
             <span
               className={cn(
-                "mr-1 flex items-center gap-1 rounded-full bg-amber-500/15 px-2.5 py-1 text-xs font-medium text-amber-700 dark:text-amber-400",
+                "mr-0.5 flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-1 text-xs font-medium text-amber-700 dark:text-amber-400 sm:mr-1 sm:px-2.5",
               )}
               title="Pending approvals in this channel"
             >
-              <ShieldAlert className="size-3.5" />
-              {pendingApprovalCount}
+              <ShieldAlert className="size-3.5 shrink-0" />
+              <span className="tabular-nums">{pendingApprovalCount}</span>
             </span>
           )}
           <button
@@ -149,25 +198,12 @@ export function ChannelHeader({
           >
             <Search className="size-5" />
           </button>
-          <Link
-            href={chatUrl(channelSlug, "agents")}
-            scroll={false}
-            className={cn(
-              "rounded-md p-2 hover:bg-muted",
-              settingsSection === "agents"
-                ? "bg-muted text-foreground"
-                : "text-muted-foreground",
-            )}
-            aria-label="Agent settings"
-          >
-            <Settings className="size-5" />
-          </Link>
         </div>
       </div>
 
       {onTabChange && (
         <nav
-          className="flex items-center gap-0.5 border-t border-border/60 px-1 sm:px-4"
+          className="flex items-center justify-around gap-0.5 overflow-x-auto border-t border-border/60 px-1 sm:justify-start sm:px-4"
           aria-label="Channel views"
         >
           <ChannelTabButton
@@ -183,7 +219,23 @@ export function ChannelHeader({
             count={pinnedCount}
             onClick={() => onTabChange("pins")}
           />
+          <ChannelTabButton
+            active={activeTab === "members"}
+            icon={Users}
+            label="Members"
+            count={memberCount}
+            onClick={() => onTabChange("members")}
+          />
         </nav>
+      )}
+
+      {canManageChannel && onChannelUpdated && (
+        <ChannelSettingsDialog
+          channel={channel}
+          open={settingsOpen}
+          onClose={() => setSettingsOpen(false)}
+          onUpdated={onChannelUpdated}
+        />
       )}
 
       {searchOpen && onSearchChange && (
@@ -223,7 +275,7 @@ export function ChannelHeader({
                   >
                     <span className="font-medium">{hit.sender_name}</span>
                     <span className="line-clamp-2 text-muted-foreground">
-                      {hit.content}
+                      <LinkifiedText text={hit.content} />
                     </span>
                   </button>
                 </li>

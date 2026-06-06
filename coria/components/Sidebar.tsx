@@ -6,8 +6,17 @@ import { LogOut, Plus, Settings, Trash2, X } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase"
 import { slugifyChannelName } from "@/lib/workspace"
-import { chatUrl } from "@/lib/settings-url"
-import type { Channel, MemberRole, Workspace } from "@/types"
+import { chatUrlForChannel, settingsUrl } from "@/lib/settings-url"
+import type { Agent, Channel, Member, MemberRole, Workspace } from "@/types"
+import {
+  directTargetActive,
+  ensureAgentDm,
+  ensureMemberDm,
+  isPublicChannel,
+} from "@/lib/direct-messages"
+import { AgentAvatar } from "@/components/AgentAvatar"
+import { AgentAiBadge } from "@/components/AgentAiBadge"
+import { MemberAvatar } from "@/components/MemberAvatar"
 import { Button } from "@/components/ui/button"
 import { LoadingButton } from "@/components/ui/loading-button"
 import { WorkspaceSwitcher } from "@/components/WorkspaceSwitcher"
@@ -28,28 +37,38 @@ export function Sidebar({
   workspaces,
   channels,
   activeChannelSlug,
+  switchingChannelId = null,
   workspaceId,
   displayName,
   email,
   memberRole,
+  agents,
+  workspaceMembers,
+  currentMemberId,
   open,
   onClose,
+  onChannelSelect,
   onChannelCreated,
   onChannelDeleted,
-  settingsSection = null,
+  settingsActive = false,
 }: {
   workspaces: Workspace[]
   channels: Channel[]
   activeChannelSlug: string
+  switchingChannelId?: string | null
   workspaceId: string
   displayName: string
   email: string
   memberRole: MemberRole
+  agents: Agent[]
+  workspaceMembers: Member[]
+  currentMemberId: string
   open: boolean
   onClose: () => void
+  onChannelSelect?: (channel: Channel) => void
   onChannelCreated?: (channel: Channel) => void
   onChannelDeleted?: (channelId: string, fallbackChannel: Channel) => void
-  settingsSection?: string | null
+  settingsActive?: boolean
 }) {
   const router = useRouter()
   const { toast } = useToast()
@@ -61,8 +80,15 @@ export function Sidebar({
   const [width, setWidth] = useState(DEFAULT_SIDEBAR_WIDTH)
   const [resizing, setResizing] = useState(false)
   const [deletingChannelId, setDeletingChannelId] = useState<string | null>(null)
+  const [openingDmKey, setOpeningDmKey] = useState<string | null>(null)
+  const [signingOut, setSigningOut] = useState(false)
   const widthRef = useRef(DEFAULT_SIDEBAR_WIDTH)
   const canManageChannels = memberRole === "owner" || memberRole === "admin"
+  const publicChannels = channels.filter(isPublicChannel)
+  const activeChannel = channels.find((c) => c.slug === activeChannelSlug)
+  const dmAgents = agents.filter((a) => a.status === "active")
+  const dmMembers = workspaceMembers.filter((m) => m.id !== currentMemberId)
+  const showDirectSection = dmAgents.length > 0 || dmMembers.length > 0
 
   useEffect(() => {
     const stored = localStorage.getItem(SIDEBAR_WIDTH_KEY)
@@ -103,10 +129,15 @@ export function Sidebar({
   }, [])
 
   async function signOut() {
-    const supabase = createClient()
-    await supabase.auth.signOut()
-    router.push("/login")
-    router.refresh()
+    setSigningOut(true)
+    try {
+      const supabase = createClient()
+      await supabase.auth.signOut()
+      router.push("/login")
+      router.refresh()
+    } finally {
+      setSigningOut(false)
+    }
   }
 
   async function createChannel(e: React.FormEvent) {
@@ -123,16 +154,12 @@ export function Sidebar({
     setCreating(true)
     setCreateError(null)
     const supabase = createClient()
-    const { data, error } = await supabase
-      .from("channels")
-      .insert({
-        workspace_id: workspaceId,
-        name,
-        slug,
-        type: "hybrid",
-      })
-      .select("id,workspace_id,name,slug,type,created_at")
-      .single()
+    const { data, error } = await supabase.rpc("create_channel", {
+      p_workspace_id: workspaceId,
+      p_name: name,
+      p_slug: slug,
+      p_type: "hybrid",
+    })
 
     setCreating(false)
 
@@ -143,13 +170,26 @@ export function Sidebar({
 
     setNewName("")
     setShowCreate(false)
-    onChannelCreated?.(data as Channel)
+    const channel = data as Channel
+    onChannelCreated?.({
+      id: channel.id,
+      workspace_id: channel.workspace_id,
+      name: channel.name,
+      slug: channel.slug,
+      type: channel.type,
+      description: channel.description ?? null,
+      created_at: channel.created_at,
+    })
     onClose()
   }
 
   async function deleteChannel(channel: Channel) {
     if (!canManageChannels || deletingChannelId) return
-    if (channels.length <= 1) {
+    if (channel.slug === "general") {
+      toast("Cannot delete #general — it is the default workspace channel.")
+      return
+    }
+    if (publicChannels.length <= 1) {
       toast("Cannot delete the last channel in a workspace.")
       return
     }
@@ -175,12 +215,47 @@ export function Sidebar({
       }
       toast(`#${channel.name} deleted.`, "success")
       onChannelDeleted?.(channel.id, json.fallback_channel!)
-      if (activeChannelSlug === channel.slug) {
-        router.push(`/?channel=${json.fallback_channel!.slug}`)
-      }
     } finally {
       setDeletingChannelId(null)
     }
+  }
+
+  async function openDirectChat(
+    key: string,
+    openFn: () => Promise<{ channel: Channel | null; error: string | null }>,
+  ) {
+    if (openingDmKey || switchingChannelId) return
+    setOpeningDmKey(key)
+    try {
+      const { channel, error } = await openFn()
+      if (error || !channel) {
+        toast(error ?? "Could not open direct message.")
+        return
+      }
+      onChannelCreated?.(channel)
+      if (onChannelSelect) {
+        onChannelSelect(channel)
+      } else {
+        router.push(chatUrlForChannel(channel, currentMemberId))
+      }
+      onClose()
+    } finally {
+      setOpeningDmKey(null)
+    }
+  }
+
+  async function openAgentDm(agent: Agent) {
+    const supabase = createClient()
+    await openDirectChat(`agent:${agent.id}`, () =>
+      ensureAgentDm(supabase, workspaceId, agent.id),
+    )
+  }
+
+  async function openMemberDm(member: Member) {
+    const supabase = createClient()
+    await openDirectChat(`member:${member.id}`, () =>
+      ensureMemberDm(supabase, workspaceId, member.id),
+    )
   }
 
   return (
@@ -219,9 +294,9 @@ export function Sidebar({
         </div>
 
         <nav className="flex flex-1 flex-col gap-1 overflow-y-auto p-2">
-          {channels.map((ch) => {
-            const href = `/?channel=${ch.slug}`
+          {publicChannels.map((ch) => {
             const active = activeChannelSlug === ch.slug
+            const switching = switchingChannelId === ch.id
             return (
               <div
                 key={ch.id}
@@ -230,28 +305,40 @@ export function Sidebar({
                   active && "bg-sidebar-accent",
                 )}
               >
-                <Link
-                  href={href}
-                  onClick={onClose}
+                <Button
+                  type="button"
+                  variant="ghost"
+                  loading={switching}
+                  disabled={Boolean(switchingChannelId) && !switching}
+                  onClick={() => {
+                    if (onChannelSelect) {
+                      onChannelSelect(ch)
+                    } else {
+                      router.push(chatUrlForChannel(ch, currentMemberId))
+                    }
+                    onClose()
+                  }}
                   className={cn(
-                    "min-w-0 flex-1 rounded-md px-3 py-2 text-left text-sm font-medium transition-colors hover:bg-sidebar-accent",
+                    "h-auto min-w-0 flex-1 justify-start rounded-md px-3 py-2 text-left text-sm font-medium hover:bg-sidebar-accent",
                     active
                       ? "text-sidebar-accent-foreground"
                       : "text-sidebar-foreground",
                   )}
                 >
                   # {ch.name}
-                </Link>
-                {canManageChannels && channels.length > 1 && (
-                  <button
+                </Button>
+                {canManageChannels && publicChannels.length > 1 && ch.slug !== "general" && (
+                  <Button
                     type="button"
+                    variant="ghost"
+                    size="icon-xs"
                     aria-label={`Delete #${ch.name}`}
-                    disabled={deletingChannelId === ch.id}
+                    loading={deletingChannelId === ch.id}
                     onClick={() => void deleteChannel(ch)}
-                    className="mr-1 rounded-md p-1.5 text-muted-foreground opacity-100 transition-opacity hover:bg-sidebar-accent hover:text-destructive md:opacity-0 md:group-hover/channel:opacity-100 disabled:opacity-50"
+                    className="mr-1 text-muted-foreground opacity-100 hover:text-destructive md:opacity-0 md:group-hover/channel:opacity-100"
                   >
                     <Trash2 className="size-3.5" />
-                  </button>
+                  </Button>
                 )}
               </div>
             )
@@ -299,16 +386,91 @@ export function Sidebar({
               New channel
             </button>
           )}
+
+          {showDirectSection && (
+            <div className="mt-4 border-t border-sidebar-border pt-3">
+              <p className="mb-1 px-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Direct messages
+              </p>
+              {dmAgents.map((agent) => {
+                const active = directTargetActive(
+                  activeChannel,
+                  { kind: "agent", id: agent.id },
+                  currentMemberId,
+                )
+                const loading = openingDmKey === `agent:${agent.id}`
+                return (
+                  <Button
+                    key={agent.id}
+                    type="button"
+                    variant="ghost"
+                    loading={loading}
+                    disabled={Boolean(openingDmKey) && !loading}
+                    onClick={() => void openAgentDm(agent)}
+                    className={cn(
+                      "h-auto w-full justify-start gap-2 rounded-md px-3 py-2 text-left text-sm font-medium hover:bg-sidebar-accent",
+                      active
+                        ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                        : "text-sidebar-foreground",
+                    )}
+                  >
+                    <AgentAvatar
+                      name={agent.name}
+                      mentionSlug={agent.mention_slug}
+                      color={agent.color}
+                      avatarUrl={agent.avatar_url}
+                      size="sm"
+                    />
+                    <span className="flex min-w-0 flex-1 items-center gap-1.5">
+                      <span className="truncate">{agent.name}</span>
+                      <AgentAiBadge compact />
+                    </span>
+                  </Button>
+                )
+              })}
+              {dmMembers.map((member) => {
+                const active = directTargetActive(
+                  activeChannel,
+                  { kind: "member", id: member.id },
+                  currentMemberId,
+                )
+                const loading = openingDmKey === `member:${member.id}`
+                return (
+                  <Button
+                    key={member.id}
+                    type="button"
+                    variant="ghost"
+                    loading={loading}
+                    disabled={Boolean(openingDmKey) && !loading}
+                    onClick={() => void openMemberDm(member)}
+                    className={cn(
+                      "h-auto w-full justify-start gap-2 rounded-md px-3 py-2 text-left text-sm font-medium hover:bg-sidebar-accent",
+                      active
+                        ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                        : "text-sidebar-foreground",
+                    )}
+                  >
+                    <MemberAvatar
+                      member={member}
+                      displayName={member.display_name}
+                      size="sm"
+                      interactive={false}
+                    />
+                    <span className="truncate">{member.display_name}</span>
+                  </Button>
+                )
+              })}
+            </div>
+          )}
         </nav>
 
         <div className="border-t border-sidebar-border p-2">
           <Link
-            href={chatUrl(activeChannelSlug, "profile")}
-            scroll={false}
+            href={settingsUrl("profile")}
             onClick={onClose}
             className={cn(
               "flex items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-              settingsSection
+              settingsActive
                 ? "bg-sidebar-accent text-sidebar-accent-foreground"
                 : "text-muted-foreground",
             )}
@@ -326,6 +488,7 @@ export function Sidebar({
           <Button
             variant="ghost"
             size="sm"
+            loading={signingOut}
             onClick={() => void signOut()}
             className="w-full justify-start gap-2 text-muted-foreground"
           >

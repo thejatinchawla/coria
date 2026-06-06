@@ -5,10 +5,22 @@ from fastapi import HTTPException
 from workspace_settings import assert_agents_not_globally_paused
 
 
+def _is_member_direct_dm(channel: dict) -> bool:
+    return channel.get("type") == "direct" and bool(
+        channel.get("direct_peer_member_id")
+    )
+
+
+def _is_agent_direct_dm(channel: dict) -> bool:
+    return channel.get("type") == "direct" and bool(channel.get("direct_agent_id"))
+
+
 def fetch_channel(supabase, channel_id: str) -> dict:
     result = (
         supabase.table("channels")
-        .select("id,workspace_id,slug,type,name")
+        .select(
+            "id,workspace_id,slug,type,name,direct_agent_id,direct_peer_member_id"
+        )
         .eq("id", channel_id)
         .limit(1)
         .execute()
@@ -49,6 +61,30 @@ def validate_invoke_scope(supabase, agent: dict, channel: dict) -> None:
 
     if agent["workspace_id"] != channel["workspace_id"]:
         raise HTTPException(status_code=403, detail="Agent not in channel workspace")
+
+    if _is_agent_direct_dm(channel):
+        if agent["id"] != channel.get("direct_agent_id"):
+            raise HTTPException(
+                status_code=403,
+                detail="This direct chat is only with that agent",
+            )
+        return
+
+    if _is_member_direct_dm(channel):
+        result = (
+            supabase.table("channel_agents")
+            .select("id")
+            .eq("channel_id", channel["id"])
+            .eq("agent_id", agent["id"])
+            .limit(1)
+            .execute()
+        )
+        if not (result.data or []):
+            raise HTTPException(
+                status_code=403,
+                detail="Add this agent to the conversation before mentioning them",
+            )
+        return
 
     if channel.get("type") == "human_only":
         raise HTTPException(status_code=403, detail="Agents cannot post in human-only channels")

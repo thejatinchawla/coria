@@ -15,6 +15,25 @@ VALID_TOOLS = {
     "github_create_pr",
     "workspace_search",
 }
+WRITE_TOOLS = frozenset({"github_post_comment", "github_create_pr"})
+
+
+def sync_write_tool_policies(
+    supabase, workspace_id: str, allowed_tools: list[str]
+) -> None:
+    """Ensure workspace policies allow write tools the agent is configured to use."""
+    for tool_name in WRITE_TOOLS:
+        if tool_name not in allowed_tools:
+            continue
+        supabase.table("tool_policies").upsert(
+            {
+                "workspace_id": workspace_id,
+                "tool_name": tool_name,
+                "requires_approval": True,
+                "enabled": True,
+            },
+            on_conflict="workspace_id,tool_name",
+        ).execute()
 
 
 def list_agents(supabase, workspace_id: str) -> list[dict]:
@@ -100,7 +119,9 @@ def create_agent(supabase, workspace_id: str, payload: dict) -> dict:
         row["avatar_url"] = payload["avatar_url"]
 
     result = supabase.table("agents").insert(row).execute()
-    return (result.data or [{}])[0]
+    created = (result.data or [{}])[0]
+    sync_write_tool_policies(supabase, workspace_id, row["allowed_tools"])
+    return created
 
 
 def update_agent(
@@ -142,7 +163,10 @@ def update_agent(
         .eq("workspace_id", workspace_id)
         .execute()
     )
-    return (result.data or [{}])[0]
+    updated = (result.data or [{}])[0]
+    if "allowed_tools" in updates:
+        sync_write_tool_policies(supabase, workspace_id, updates["allowed_tools"])
+    return updated
 
 
 def patch_workspace_settings(supabase, workspace_id: str, payload: dict) -> dict:

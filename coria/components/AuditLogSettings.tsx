@@ -40,6 +40,7 @@ export function AuditLogSettings({ agents }: { agents: Agent[] }) {
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(0)
   const [loading, setLoading] = useState(true)
+  const [exporting, setExporting] = useState(false)
   const [agentId, setAgentId] = useState("")
   const [toolName, setToolName] = useState("")
   const [outcome, setOutcome] = useState("")
@@ -115,21 +116,26 @@ export function AuditLogSettings({ agents }: { agents: Agent[] }) {
   }
 
   async function exportJson() {
-    const res = await fetch("/api/settings/audit/export?days=30")
-    if (!res.ok) {
-      toast("Export failed.")
-      return
+    setExporting(true)
+    try {
+      const res = await fetch("/api/settings/audit/export?days=30")
+      if (!res.ok) {
+        toast("Export failed.")
+        return
+      }
+      const json = await res.json()
+      const blob = new Blob([JSON.stringify(json.items ?? [], null, 2)], {
+        type: "application/json",
+      })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `coria-audit-${new Date().toISOString().slice(0, 10)}.json`
+      a.click()
+      URL.revokeObjectURL(url)
+    } finally {
+      setExporting(false)
     }
-    const json = await res.json()
-    const blob = new Blob([JSON.stringify(json.items ?? [], null, 2)], {
-      type: "application/json",
-    })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement("a")
-    a.href = url
-    a.download = `coria-audit-${new Date().toISOString().slice(0, 10)}.json`
-    a.click()
-    URL.revokeObjectURL(url)
   }
 
   return (
@@ -137,7 +143,13 @@ export function AuditLogSettings({ agents }: { agents: Agent[] }) {
       <section className="space-y-3 rounded-lg border p-4">
         <div className="flex flex-wrap items-end justify-between gap-2">
           <h2 className="text-sm font-medium">Filters</h2>
-          <Button type="button" variant="outline" size="sm" onClick={() => void exportJson()}>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            loading={exporting}
+            onClick={() => void exportJson()}
+          >
             <Download className="mr-1 size-3.5" />
             Export JSON (30d)
           </Button>
@@ -192,8 +204,8 @@ export function AuditLogSettings({ agents }: { agents: Agent[] }) {
             />
           </label>
         </div>
-        <Button type="button" size="sm" disabled={loading} onClick={applyFilters}>
-          {loading ? "Loading…" : "Apply filters"}
+        <Button type="button" size="sm" loading={loading} onClick={applyFilters}>
+          Apply filters
         </Button>
       </section>
 
@@ -213,7 +225,8 @@ export function AuditLogSettings({ agents }: { agents: Agent[] }) {
                 variant="outline"
                 size="icon"
                 className="size-8"
-                disabled={loading || page === 0}
+                loading={loading}
+                disabled={page === 0}
                 aria-label="Previous page"
                 onClick={() => goToPage(page - 1)}
               >
@@ -227,7 +240,8 @@ export function AuditLogSettings({ agents }: { agents: Agent[] }) {
                 variant="outline"
                 size="icon"
                 className="size-8"
-                disabled={loading || rangeEnd >= total}
+                loading={loading}
+                disabled={rangeEnd >= total}
                 aria-label="Next page"
                 onClick={() => goToPage(page + 1)}
               >
@@ -253,7 +267,7 @@ export function AuditLogSettings({ agents }: { agents: Agent[] }) {
                 >
                   {entry.outcome}
                 </span>
-                <span className="font-mono text-xs">{entry.tool_name}</span>
+                <span className="break-all font-mono text-xs">{entry.tool_name}</span>
                 <span className="text-xs text-muted-foreground">
                   @{agentName(entry.agent_id)}
                 </span>

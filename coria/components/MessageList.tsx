@@ -2,13 +2,19 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import { ChevronDown } from "lucide-react"
-import type { Agent, Message as MessageType } from "@/types"
+import type { Agent, Member, Message as MessageType } from "@/types"
+import { messageAgent, messageMember } from "@/lib/message-sender"
 import { Message } from "@/components/Message"
 import { AgentThinking } from "@/components/AgentThinking"
 import { StreamingMessage } from "@/components/StreamingMessage"
 import { ThreadInline } from "@/components/ThreadInline"
 import { Button } from "@/components/ui/button"
 import type { ActionBlock } from "@/types"
+import {
+  isSameMessageGroup,
+  shouldShowMessageTimestamp,
+} from "@/lib/message-time"
+import { cn } from "@/lib/utils"
 
 const SCROLL_THRESHOLD_PX = 80
 
@@ -17,6 +23,7 @@ export function MessageList({
   streamState,
   streamingAgent,
   agentsById,
+  membersById,
   expandedThreadId,
   threadReplies,
   highlightMessageId,
@@ -24,6 +31,9 @@ export function MessageList({
   onToggleThread,
   onPinToggle,
   pinLimitReached = false,
+  onDelete,
+  canDelete,
+  currentMemberId = null,
   activeStreamThreadId,
   threadProps,
 }: {
@@ -31,6 +41,7 @@ export function MessageList({
   streamState?: { content: string; status?: string } | null
   streamingAgent?: Pick<Agent, "name" | "color" | "avatar_url"> | null
   agentsById?: Record<string, Agent>
+  membersById?: Record<string, Member>
   expandedThreadId?: string | null
   threadReplies?: Record<string, MessageType[]>
   highlightMessageId?: string | null
@@ -38,6 +49,9 @@ export function MessageList({
   onToggleThread?: (message: MessageType) => void
   onPinToggle?: (message: MessageType, pinned: boolean) => void
   pinLimitReached?: boolean
+  onDelete?: (message: MessageType) => void
+  canDelete?: (message: MessageType) => boolean
+  currentMemberId?: string | null
   activeStreamThreadId?: string | null
   threadProps?: {
     channelId: string
@@ -57,6 +71,9 @@ export function MessageList({
     onMessageSent?: (message: MessageType) => void
     onPinToggle?: (message: MessageType, pinned: boolean) => void
     pinLimitReached?: boolean
+    onDelete?: (message: MessageType) => void
+    canDelete?: (message: MessageType) => boolean
+    onCloseThread?: () => void
   }
 }) {
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -66,6 +83,7 @@ export function MessageList({
     messages.at(-1)?.id,
   )
   const [atBottom, setAtBottom] = useState(true)
+  const activeThreadRef = useRef<HTMLDivElement>(null)
 
   const checkAtBottom = useCallback(() => {
     const el = scrollRef.current
@@ -86,6 +104,28 @@ export function MessageList({
     checkAtBottom()
     return () => el.removeEventListener("scroll", checkAtBottom)
   }, [checkAtBottom, messages.length])
+
+  useEffect(() => {
+    if (!expandedThreadId || !threadProps?.onCloseThread) return
+
+    const closeThread = () => threadProps.onCloseThread?.()
+
+    function onPointerDown(event: MouseEvent) {
+      const target = event.target
+      if (!(target instanceof Node)) return
+      if (activeThreadRef.current?.contains(target)) return
+      if (
+        target instanceof Element &&
+        target.closest("[data-message-actions-menu]")
+      ) {
+        return
+      }
+      closeThread()
+    }
+
+    document.addEventListener("mousedown", onPointerDown)
+    return () => document.removeEventListener("mousedown", onPointerDown)
+  }, [expandedThreadId, threadProps])
 
   useEffect(() => {
     const lastId = messages.at(-1)?.id
@@ -117,16 +157,33 @@ export function MessageList({
   return (
     <div className="relative min-h-0 flex-1">
       <div ref={scrollRef} className="h-full overflow-y-auto">
-        <div className="mx-auto flex max-w-3xl flex-col gap-4 px-3 py-4 sm:gap-6 sm:px-6 sm:py-6">
-        {messages.map((message) => (
-          <div key={message.id} className="flex flex-col gap-0">
+        <div className="mx-auto flex max-w-3xl flex-col px-3 py-4 sm:px-6 sm:py-6">
+        {messages.map((message, index) => {
+          const previous = messages[index - 1]
+          const next = messages[index + 1]
+          const groupedWithPrevious =
+            previous != null && isSameMessageGroup(previous, message)
+          const groupedWithNext =
+            next != null && isSameMessageGroup(message, next)
+
+          const isThreadOpen = expandedThreadId === message.id
+
+          return (
+          <div
+            key={message.id}
+            ref={isThreadOpen ? activeThreadRef : undefined}
+            className={cn(
+              "flex flex-col gap-0",
+              index > 0 && (groupedWithPrevious ? "mt-0.5" : "mt-4 sm:mt-5"),
+            )}
+          >
             <Message
               message={message}
-              agent={
-                message.sender_id && agentsById
-                  ? agentsById[message.sender_id]
-                  : undefined
-              }
+              showTimestamp={shouldShowMessageTimestamp(messages, index)}
+              groupedWithPrevious={groupedWithPrevious}
+              groupedWithNext={groupedWithNext}
+              agent={messageAgent(message, agentsById)}
+              member={messageMember(message, membersById)}
               replyCount={message.reply_count ?? 0}
               threadExpanded={expandedThreadId === message.id}
               highlight={highlightMessageId === message.id}
@@ -144,8 +201,14 @@ export function MessageList({
               pinDisabled={
                 pinLimitReached && !message.is_pinned && onPinToggle !== undefined
               }
+              onDelete={
+                onDelete && (!canDelete || canDelete(message))
+                  ? () => onDelete(message)
+                  : undefined
+              }
+              currentMemberId={currentMemberId ?? threadProps?.memberId ?? null}
             />
-            {expandedThreadId === message.id &&
+            {isThreadOpen &&
               threadProps &&
               threadReplies && (
                 <div className="hidden md:block">
@@ -162,12 +225,14 @@ export function MessageList({
                         : null
                     }
                     agentsById={agentsById}
+                    membersById={membersById}
                     {...threadProps}
                   />
                 </div>
               )}
           </div>
-        ))}
+          )
+        })}
         {streamState &&
           !activeStreamThreadId &&
           (streamState.content ? (

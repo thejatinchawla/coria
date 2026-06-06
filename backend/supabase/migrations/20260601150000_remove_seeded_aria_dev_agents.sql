@@ -1,16 +1,14 @@
--- Remove seeded Aria/Dev agents; @divv is the only default. Admins create more in Settings → Agents.
+-- Clean up legacy demo agent rows from older migration history (obsolete slugs).
+-- Fresh installs seed Divv only; this is a no-op when those rows never existed.
 
--- Drop triggers tied to removed agents
 DELETE FROM agent_triggers
 WHERE agent_id IN (
   SELECT id FROM agents WHERE mention_slug IN ('aria', 'dev')
 );
 
--- Remove seeded multi-agent rows (demo + any workspace using these slugs)
 DELETE FROM agents
 WHERE mention_slug IN ('aria', 'dev');
 
--- Ensure default_agent_id points at a remaining agent per workspace
 UPDATE workspace_settings ws
 SET default_agent_id = sub.agent_id
 FROM (

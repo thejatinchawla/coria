@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { Suspense, useEffect, useMemo, useState } from "react"
 import type {
   Agent,
   AgentTrigger,
@@ -12,8 +12,13 @@ import type {
   PendingInvite,
   WorkspaceSettings,
 } from "@/types"
-import type { SettingsId } from "@/lib/settings-links"
+import {
+  isUserScopedSettingsSection,
+  type SettingsId,
+} from "@/lib/settings-links"
+import { PasswordSettings } from "@/components/PasswordSettings"
 import { ProfileSettings } from "@/components/ProfileSettings"
+import { ThemeSettings } from "@/components/ThemeSettings"
 import { AgentSettings } from "@/components/AgentSettings"
 import { MemberSettings } from "@/components/MemberSettings"
 import { IntegrationSettings } from "@/components/IntegrationSettings"
@@ -206,7 +211,9 @@ function IntegrationSettingsLoader({ canManageLlm }: { canManageLlm: boolean }) 
   return (
     <div className="space-y-8">
       {canManageLlm && llmStatus && <LlmSettings initialStatus={llmStatus} />}
-      <IntegrationSettings initialIntegration={integration} />
+      <Suspense fallback={<LoadingPanel />}>
+        <IntegrationSettings initialIntegration={integration} />
+      </Suspense>
     </div>
   )
 }
@@ -314,33 +321,97 @@ function WorkspaceSettingsLoader() {
   )
 }
 
+function SettingsSectionPanel({
+  id,
+  workspaceId,
+  agents,
+  channels,
+  canManageLlm,
+}: {
+  id: SettingsId
+  workspaceId: string
+  agents: Agent[]
+  channels: Channel[]
+  canManageLlm: boolean
+}) {
+  const workspaceKey = isUserScopedSettingsSection(id) ? "user" : workspaceId
+
+  switch (id) {
+    case "workspace":
+      return <WorkspaceSettingsLoader key={workspaceKey} />
+    case "profile":
+      return <ProfileSettingsLoader key={workspaceKey} />
+    case "appearance":
+      return <ThemeSettings key={workspaceKey} />
+    case "password":
+      return <PasswordSettings key={workspaceKey} />
+    case "agents":
+      return <AgentSettingsLoader key={workspaceKey} />
+    case "members":
+      return <MemberSettingsLoader key={workspaceKey} />
+    case "integrations":
+      return (
+        <IntegrationSettingsLoader
+          key={workspaceKey}
+          canManageLlm={canManageLlm}
+        />
+      )
+    case "triggers":
+      return (
+        <TriggerSettingsLoader
+          key={workspaceKey}
+          agents={agents}
+          channels={channels}
+        />
+      )
+    case "audit":
+      return <AuditSettingsLoader key={workspaceKey} agents={agents} />
+  }
+}
+
 export function SettingsPanel({
   section,
+  workspaceId,
   agents,
   channels,
   memberRole,
 }: {
   section: SettingsId
+  workspaceId: string
   agents: Agent[]
   channels: Channel[]
   memberRole: MemberRole
 }) {
   const canManageLlm = memberRole === "owner" || memberRole === "admin"
+  const [visited, setVisited] = useState<SettingsId[]>(() => [section])
 
-  switch (section) {
-    case "workspace":
-      return <WorkspaceSettingsLoader />
-    case "profile":
-      return <ProfileSettingsLoader />
-    case "agents":
-      return <AgentSettingsLoader />
-    case "members":
-      return <MemberSettingsLoader />
-    case "integrations":
-      return <IntegrationSettingsLoader canManageLlm={canManageLlm} />
-    case "triggers":
-      return <TriggerSettingsLoader agents={agents} channels={channels} />
-    case "audit":
-      return <AuditSettingsLoader agents={agents} />
-  }
+  useEffect(() => {
+    setVisited((prev) => {
+      const userSections = prev.filter(isUserScopedSettingsSection)
+      if (isUserScopedSettingsSection(section)) {
+        return userSections.includes(section)
+          ? userSections
+          : [...userSections, section]
+      }
+      return [...userSections, section]
+    })
+  }, [workspaceId, section])
+
+  const panels = useMemo(
+    () =>
+      visited.map((id) => (
+        <div key={`${id}-${isUserScopedSettingsSection(id) ? "user" : workspaceId}`} hidden={id !== section}>
+          <SettingsSectionPanel
+            id={id}
+            workspaceId={workspaceId}
+            agents={agents}
+            channels={channels}
+            canManageLlm={canManageLlm}
+          />
+        </div>
+      )),
+    [visited, section, workspaceId, agents, channels, canManageLlm],
+  )
+
+  return <>{panels}</>
 }

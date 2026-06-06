@@ -165,11 +165,11 @@ export function LlmSettings({
         </div>
         <div className="min-w-0 flex-1">
           <h2 className="text-sm font-medium">LLM provider</h2>
-          <p className="text-xs text-muted-foreground">
+          <p className="text-xs break-words text-muted-foreground">
             Choose Groq, Anthropic, or keep the platform default from server
-            env (<code className="text-xs">LLM_PROVIDER</code> /{" "}
-            <code className="text-xs">LLM_MODEL</code>). API keys are stored in
-            Supabase Vault — never shown after save.
+            env (<code className="text-xs break-all">LLM_PROVIDER</code> /{" "}
+            <code className="text-xs break-all">LLM_MODEL</code>). API keys are
+            stored in Supabase Vault — never shown after save.
           </p>
           {loading ? (
             <p className="mt-2 text-xs text-muted-foreground">Loading…</p>
@@ -265,7 +265,7 @@ export function LlmSettings({
                 type="button"
                 variant="outline"
                 size="sm"
-                disabled={saving}
+                loading={saving}
                 onClick={() => void removeCustomKey()}
               >
                 Remove stored API key

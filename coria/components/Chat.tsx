@@ -1,17 +1,27 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
-import Link from "next/link"
-import { useRouter } from "next/navigation"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { createClient } from "@/lib/supabase"
-import { fetchThreadReplies, fetchPinnedMessages, searchChannelMessages, setMessagePinned, MAX_PINNED_MESSAGES } from "@/lib/messages"
+import {
+  fetchChannelMessages,
+  fetchThreadReplies,
+  fetchPinnedMessages,
+  searchChannelMessages,
+  setMessagePinned,
+  canDeleteMessage,
+  deleteMessage,
+  MAX_PINNED_MESSAGES,
+} from "@/lib/messages"
 import { streamActionBlockDecision } from "@/lib/stream-invoke"
-import { chatUrl } from "@/lib/settings-url"
-import type { SettingsId } from "@/lib/settings-links"
+import Link from "next/link"
+import { syncChatUrl, settingsUrl } from "@/lib/settings-url"
+import { writeStoredChatLocation } from "@/lib/channel-slug"
+import { chatLocationFromChannel } from "@/lib/chat-location"
 import type {
   ActionBlock,
   Agent,
   Channel,
+  Member,
   MemberRole,
   Message,
   MessageSearchHit,
@@ -22,13 +32,16 @@ import { ActionBlockList } from "@/components/ActionBlock"
 import { ChannelHeader } from "@/components/ChannelHeader"
 import { MessageList } from "@/components/MessageList"
 import { PinsView } from "@/components/PinsView"
+import { ChannelMembersView } from "@/components/ChannelMembersView"
 import type { ChannelTab } from "@/components/ChannelHeader"
 import { MessageInput } from "@/components/MessageInput"
-import { SettingsModal } from "@/components/SettingsModal"
-import { Sidebar } from "@/components/Sidebar"
+import { useWorkspaceShell } from "@/components/WorkspaceShell"
 import { ThreadView } from "@/components/ThreadView"
 import { useIsMobile } from "@/components/ThreadInline"
 import { useToast } from "@/components/Toast"
+import { useConfirm } from "@/components/ConfirmDialog"
+import { AgentFtue } from "@/components/AgentFtue"
+import { isMemberDirectMessage } from "@/lib/direct-messages"
 
 type StreamState = {
   content: string
@@ -39,44 +52,46 @@ type StreamState = {
 
 export function Chat({
   workspace,
-  workspaces,
   memberRole,
   channel,
-  channels,
   agentId,
   agents,
   workspaceSettings,
   memberId,
   workspaceId,
   initialMessages,
-  userEmail,
-  userDisplayName,
-  settingsSection,
 }: {
   workspace: Workspace
-  workspaces: Workspace[]
   memberRole: MemberRole
   channel: Channel
-  channels: Channel[]
   agentId: string
   agents: Agent[]
   workspaceSettings: WorkspaceSettings | null
   memberId: string | null
   workspaceId: string
   initialMessages: Message[]
-  userEmail: string
-  userDisplayName: string
-  settingsSection: SettingsId | null
 }) {
-  const router = useRouter()
   const { toast } = useToast()
+  const { confirm } = useConfirm()
   const isMobile = useIsMobile()
-  const [messages, setMessages] = useState<Message[]>(initialMessages)
-  const [channelList, setChannelList] = useState(channels)
+  const {
+    shell,
+    setActiveChannelSlug,
+    setSwitchingChannelId,
+    registerChatBridge,
+  } = useWorkspaceShell()
+  const userDisplayName = shell.userDisplayName
+  const channelList = shell.channels
+  const [activeChannel, setActiveChannel] = useState(channel)
+  const [messages, setMessages] = useState(initialMessages)
+  const activeChannelRef = useRef(activeChannel)
+  const messagesRef = useRef(messages)
+  const messageCacheRef = useRef<Record<string, Message[]>>({
+    [channel.id]: initialMessages,
+  })
   const [streamState, setStreamState] = useState<StreamState | null>(null)
   const [pendingBlocks, setPendingBlocks] = useState<ActionBlock[]>([])
   const [decidingBlockId, setDecidingBlockId] = useState<string | null>(null)
-  const [sidebarOpen, setSidebarOpen] = useState(false)
   const [expandedThreadId, setExpandedThreadId] = useState<string | null>(null)
   const [mobileThreadRoot, setMobileThreadRoot] = useState<Message | null>(null)
   const [threadReplies, setThreadReplies] = useState<Record<string, Message[]>>(
@@ -89,11 +104,175 @@ export function Chat({
   )
   const [pinnedMessages, setPinnedMessages] = useState<Message[]>([])
   const [channelTab, setChannelTab] = useState<ChannelTab>("messages")
+  const [composerPrefill, setComposerPrefill] = useState<string | null>(null)
+
+  useEffect(() => {
+    activeChannelRef.current = activeChannel
+    messagesRef.current = messages
+  }, [activeChannel, messages])
+
+  useEffect(() => {
+    setActiveChannelSlug(channel.slug)
+    const location = chatLocationFromChannel(channel, memberId)
+    writeStoredChatLocation(location)
+    syncChatUrl(channel, memberId)
+  }, [channel.id, channel.slug, memberId, setActiveChannelSlug])
+
+  const resetChannelViewState = useCallback(() => {
+    setExpandedThreadId(null)
+    setMobileThreadRoot(null)
+    setThreadReplies({})
+    setSearchQuery("")
+    setSearchResults([])
+    setHighlightMessageId(null)
+    setPinnedMessages([])
+    setChannelTab("messages")
+    setStreamState(null)
+  }, [])
+
+  const switchChannel = useCallback(
+    async (next: Channel, options?: { syncUrl?: boolean }) => {
+      if (next.id === activeChannelRef.current.id) return
+
+      messageCacheRef.current[activeChannelRef.current.id] = messagesRef.current
+      activeChannelRef.current = next
+      resetChannelViewState()
+      setActiveChannel(next)
+
+      setActiveChannelSlug(next.slug)
+      if (options?.syncUrl !== false) {
+        const location = chatLocationFromChannel(next, memberId)
+        writeStoredChatLocation(location)
+        syncChatUrl(next, memberId)
+      }
+
+      const cached = messageCacheRef.current[next.id]
+      if (cached) {
+        setMessages(cached)
+        return
+      }
+
+      setSwitchingChannelId(next.id)
+      try {
+        const supabase = createClient()
+        const nextMessages = await fetchChannelMessages(supabase, next.id)
+        messageCacheRef.current[next.id] = nextMessages
+        if (activeChannelRef.current.id === next.id) {
+          setMessages(nextMessages)
+        }
+      } finally {
+        setSwitchingChannelId((current) =>
+          current === next.id ? null : current,
+        )
+      }
+    },
+    [memberId, resetChannelViewState, setActiveChannelSlug, setSwitchingChannelId],
+  )
 
   const agentsById = useMemo(
     () => Object.fromEntries(agents.map((a) => [a.id, a])),
     [agents],
   )
+  const [membersById, setMembersById] = useState<Record<string, Member>>({})
+  const [channelMembers, setChannelMembers] = useState<Member[]>([])
+  const [channelMembersLoaded, setChannelMembersLoaded] = useState(false)
+  const [channelAgents, setChannelAgents] = useState<Agent[]>([])
+
+  useEffect(() => {
+    const supabase = createClient()
+    void (async () => {
+      const { data, error } = await supabase
+        .from("members")
+        .select(
+          "id,workspace_id,user_id,display_name,role,avatar_url,bio,created_at",
+        )
+        .eq("workspace_id", workspaceId)
+      if (!error && data) {
+        setMembersById(
+          Object.fromEntries(
+            data.map((member) => [member.id, member as Member]),
+          ),
+        )
+      }
+    })()
+  }, [workspaceId])
+
+  const loadChannelMembers = useCallback(async () => {
+    setChannelMembersLoaded(false)
+    try {
+      const res = await fetch(`/api/channels/${activeChannel.id}/members`)
+      if (!res.ok) {
+        setChannelMembers([])
+        return
+      }
+      const json = (await res.json()) as { members?: Member[] }
+      setChannelMembers(json.members ?? [])
+    } finally {
+      setChannelMembersLoaded(true)
+    }
+  }, [activeChannel.id])
+
+  const handleProfileUpdated = useCallback(
+    (member: Member) => {
+      setMembersById((prev) => ({ ...prev, [member.id]: member }))
+      setChannelMembers((prev) =>
+        prev.map((row) => (row.id === member.id ? { ...row, ...member } : row)),
+      )
+    },
+    [],
+  )
+
+  const loadChannelAgents = useCallback(async () => {
+    if (!isMemberDirectMessage(activeChannel)) {
+      setChannelAgents([])
+      return
+    }
+    const res = await fetch(`/api/channels/${activeChannel.id}/agents`)
+    if (!res.ok) {
+      setChannelAgents([])
+      return
+    }
+    const json = (await res.json()) as { agents?: Agent[] }
+    setChannelAgents(json.agents ?? [])
+  }, [activeChannel])
+
+  useEffect(() => {
+    void loadChannelMembers()
+  }, [loadChannelMembers])
+
+  useEffect(() => {
+    void loadChannelAgents()
+  }, [loadChannelAgents])
+
+  const isMemberDm = isMemberDirectMessage(activeChannel)
+
+  const invokableAgents = useMemo(() => {
+    if (activeChannel.direct_agent_id) {
+      const agent = agents.find((a) => a.id === activeChannel.direct_agent_id)
+      return agent ? [agent] : []
+    }
+    if (isMemberDm) {
+      return channelAgents.filter((a) => a.status === "active")
+    }
+    return agents.filter((a) => a.status === "active")
+  }, [activeChannel.direct_agent_id, agents, channelAgents, isMemberDm])
+
+  const channelMemberCount = useMemo(() => {
+    const humans = channelMembers.length
+    const agentCount =
+      activeChannel.type === "hybrid"
+        ? agents.length
+        : isMemberDm
+          ? channelAgents.length
+          : 0
+    return humans + agentCount
+  }, [
+    channelMembers.length,
+    activeChannel.type,
+    agents.length,
+    isMemberDm,
+    channelAgents.length,
+  ])
   const agentsGloballyPaused = workspaceSettings?.agents_globally_paused ?? false
 
   const topLevelMessages = useMemo(
@@ -106,11 +285,11 @@ export function Chat({
     const { data } = await supabase
       .from("action_blocks")
       .select("*")
-      .eq("channel_id", channel.id)
+      .eq("channel_id", activeChannel.id)
       .eq("status", "pending")
       .order("created_at", { ascending: true })
     setPendingBlocks((data as ActionBlock[] | null) ?? [])
-  }, [channel.id])
+  }, [activeChannel.id])
 
   const loadThread = useCallback(async (threadId: string) => {
     const supabase = createClient()
@@ -121,9 +300,9 @@ export function Chat({
 
   const loadPinnedMessages = useCallback(async () => {
     const supabase = createClient()
-    const pins = await fetchPinnedMessages(supabase, channel.id)
+    const pins = await fetchPinnedMessages(supabase, activeChannel.id)
     setPinnedMessages(pins)
-  }, [channel.id])
+  }, [activeChannel.id])
 
   const handleMessageSent = useCallback((message: Message) => {
     setMessages((prev) => {
@@ -155,6 +334,47 @@ export function Chat({
       })
     }
   }, [])
+
+  const applyMessageRemoved = useCallback((message: Message) => {
+    if (message.thread_id) {
+      setThreadReplies((prev) => {
+        const list = prev[message.thread_id!]
+        if (!list) return prev
+        return {
+          ...prev,
+          [message.thread_id!]: list.filter((m) => m.id !== message.id),
+        }
+      })
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === message.thread_id
+            ? { ...m, reply_count: Math.max((m.reply_count ?? 0) - 1, 0) }
+            : m,
+        ),
+      )
+    } else {
+      setMessages((prev) => prev.filter((m) => m.id !== message.id))
+      if ((message.reply_count ?? 0) > 0) {
+        setThreadReplies((prev) => {
+          const next = { ...prev }
+          delete next[message.id]
+          return next
+        })
+      }
+      setExpandedThreadId((current) =>
+        current === message.id ? null : current,
+      )
+      setMobileThreadRoot((current) =>
+        current?.id === message.id ? null : current,
+      )
+    }
+    setPinnedMessages((prev) => prev.filter((m) => m.id !== message.id))
+  }, [])
+
+  const messageCanDelete = useCallback(
+    (message: Message) => canDeleteMessage(message, memberId),
+    [memberId],
+  )
 
   const scrollToMessage = useCallback((messageId: string) => {
     requestAnimationFrame(() => {
@@ -220,26 +440,23 @@ export function Chat({
   )
 
   useEffect(() => {
-    setMessages(initialMessages)
-    setExpandedThreadId(null)
-    setMobileThreadRoot(null)
-    setThreadReplies({})
-    setSearchQuery("")
-    setSearchResults([])
-    setHighlightMessageId(null)
-    setPinnedMessages([])
-    setChannelTab("messages")
-  }, [channel.id, initialMessages])
-
-  useEffect(() => {
-    setChannelList(channels)
-  }, [channels])
+    function onPopState() {
+      const params = new URLSearchParams(window.location.search)
+      const slug = params.get("channel")?.trim() || "general"
+      const nextChannel = channelList.find((c) => c.slug === slug)
+      if (nextChannel) {
+        void switchChannel(nextChannel, { syncUrl: false })
+      }
+    }
+    window.addEventListener("popstate", onPopState)
+    return () => window.removeEventListener("popstate", onPopState)
+  }, [channelList, switchChannel])
 
   useEffect(() => {
     setStreamState(null)
     void loadPendingBlocks()
     void loadPinnedMessages()
-  }, [channel.id, loadPendingBlocks, loadPinnedMessages])
+  }, [activeChannel.id, loadPendingBlocks, loadPinnedMessages])
 
   useEffect(() => {
     if (!highlightMessageId) return
@@ -258,128 +475,164 @@ export function Chat({
   useEffect(() => {
     const supabase = createClient()
     let active = true
+    let realtimeChannel: ReturnType<typeof supabase.channel> | null = null
 
     const mergeTopLevel = (incoming: Message[]) =>
       setMessages((prev) => {
         const byId = new Map(prev.map((m) => [m.id, m]))
         for (const m of incoming) {
-          if (m.channel_id === channel.id) byId.set(m.id, m)
+          if (m.channel_id === activeChannel.id) byId.set(m.id, m)
         }
         return Array.from(byId.values()).sort((a, b) =>
           a.created_at.localeCompare(b.created_at),
         )
       })
 
-    const realtime = supabase
-      .channel(`messages-${channel.id}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "messages",
-          filter: `channel_id=eq.${channel.id}`,
-        },
-        (payload) => {
-          const next = payload.new as Message
-          setMessages((prev) =>
-            prev.some((m) => m.id === next.id) ? prev : [...prev, next],
-          )
+    const handleInsert = (payload: { new: Record<string, unknown> }) => {
+      const next = payload.new as Message
 
-          if (next.thread_id) {
-            setThreadReplies((prev) => {
-              const list = prev[next.thread_id!] ?? []
-              if (list.some((m) => m.id === next.id)) return prev
-              return {
-                ...prev,
-                [next.thread_id!]: [...list, next],
-              }
-            })
-            setMessages((prev) =>
-              prev.map((m) =>
-                m.id === next.thread_id
-                  ? { ...m, reply_count: (m.reply_count ?? 0) + 1 }
-                  : m,
-              ),
-            )
+      if (next.thread_id) {
+        setThreadReplies((prev) => {
+          const list = prev[next.thread_id!] ?? []
+          if (list.some((m) => m.id === next.id)) return prev
+          return {
+            ...prev,
+            [next.thread_id!]: [...list, next],
           }
-
-          if (next.sender_type === "agent") {
-            setStreamState(null)
-          }
-        },
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "messages",
-          filter: `channel_id=eq.${channel.id}`,
-        },
-        (payload) => {
-          const next = payload.new as Message
-          setMessages((prev) =>
-            prev.map((m) => (m.id === next.id ? { ...m, ...next } : m)),
+        })
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === next.thread_id
+              ? { ...m, reply_count: (m.reply_count ?? 0) + 1 }
+              : m,
+          ),
+        )
+      } else {
+        setMessages((prev) => {
+          if (prev.some((m) => m.id === next.id)) return prev
+          return [...prev, next].sort((a, b) =>
+            a.created_at.localeCompare(b.created_at),
           )
-          if (next.thread_id) {
-            setThreadReplies((prev) => {
-              const list = prev[next.thread_id!]
-              if (!list) return prev
-              return {
-                ...prev,
-                [next.thread_id!]: list.map((m) =>
-                  m.id === next.id ? { ...m, ...next } : m,
-                ),
-              }
-            })
+        })
+      }
+
+      if (next.sender_type === "agent") {
+        setStreamState(null)
+      }
+    }
+
+    const {
+      data: { subscription: authSubscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.access_token) {
+        supabase.realtime.setAuth(session.access_token)
+      }
+    })
+
+    void (async () => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
+      if (!active) return
+
+      if (session?.access_token) {
+        supabase.realtime.setAuth(session.access_token)
+      }
+
+      realtimeChannel = supabase
+        .channel(`messages-${activeChannel.id}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "INSERT",
+            schema: "public",
+            table: "messages",
+            filter: `channel_id=eq.${activeChannel.id}`,
+          },
+          handleInsert,
+        )
+        .on(
+          "postgres_changes",
+          {
+            event: "UPDATE",
+            schema: "public",
+            table: "messages",
+            filter: `channel_id=eq.${activeChannel.id}`,
+          },
+          (payload) => {
+            const next = payload.new as Message
+            if (next.thread_id) {
+              setThreadReplies((prev) => {
+                const list = prev[next.thread_id!]
+                if (!list) return prev
+                return {
+                  ...prev,
+                  [next.thread_id!]: list.map((m) =>
+                    m.id === next.id ? { ...m, ...next } : m,
+                  ),
+                }
+              })
+            } else {
+              setMessages((prev) =>
+                prev.map((m) => (m.id === next.id ? { ...m, ...next } : m)),
+              )
+            }
+            if (active) void loadPinnedMessages()
+          },
+        )
+        .on(
+          "postgres_changes",
+          {
+            event: "DELETE",
+            schema: "public",
+            table: "messages",
+            filter: `channel_id=eq.${activeChannel.id}`,
+          },
+          (payload) => {
+            const removed = payload.old as Message
+            if (!removed?.id) return
+            applyMessageRemoved(removed)
+          },
+        )
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "action_blocks",
+            filter: `channel_id=eq.${activeChannel.id}`,
+          },
+          () => {
+            if (active) void loadPendingBlocks()
+          },
+        )
+        .subscribe(async (status, err) => {
+          if (status === "CHANNEL_ERROR") {
+            console.error("[realtime] messages channel error:", err)
           }
-          if (active) void loadPinnedMessages()
-        },
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "action_blocks",
-          filter: `channel_id=eq.${channel.id}`,
-        },
-        () => {
-          if (active) void loadPendingBlocks()
-        },
-      )
-      .subscribe(async (status) => {
-        if (status !== "SUBSCRIBED" || !active) return
-        const { data } = await supabase
-          .from("messages")
-          .select("*")
-          .eq("channel_id", channel.id)
-          .is("thread_id", null)
-          .order("created_at", { ascending: true })
-        if (active && data) mergeTopLevel(data as Message[])
-      })
+          if (status !== "SUBSCRIBED" || !active) return
+          const { data } = await supabase
+            .from("messages")
+            .select("*")
+            .eq("channel_id", activeChannel.id)
+            .is("thread_id", null)
+            .order("created_at", { ascending: true })
+          if (active && data) mergeTopLevel(data as Message[])
+        })
+    })()
 
     return () => {
       active = false
-      supabase.removeChannel(realtime)
+      authSubscription.unsubscribe()
+      if (realtimeChannel) supabase.removeChannel(realtimeChannel)
     }
-  }, [channel.id, loadPendingBlocks, loadPinnedMessages])
+  }, [activeChannel.id, loadPendingBlocks, loadPinnedMessages, applyMessageRemoved])
 
   useEffect(() => {
     if (!streamState) return
     const timeout = setTimeout(() => setStreamState(null), 120000)
     return () => clearTimeout(timeout)
   }, [streamState])
-
-  useEffect(() => {
-    if (!sidebarOpen) return
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setSidebarOpen(false)
-    }
-    document.addEventListener("keydown", onKeyDown)
-    return () => document.removeEventListener("keydown", onKeyDown)
-  }, [sidebarOpen])
 
   useEffect(() => {
     const q = searchQuery.trim()
@@ -390,25 +643,74 @@ export function Chat({
     const timer = setTimeout(() => {
       void (async () => {
         const supabase = createClient()
-        const hits = await searchChannelMessages(supabase, channel.id, q)
+        const hits = await searchChannelMessages(supabase, activeChannel.id, q)
         setSearchResults(hits)
       })()
     }, 250)
     return () => clearTimeout(timer)
-  }, [searchQuery, channel.id])
+  }, [searchQuery, activeChannel.id])
 
-  function handleChannelCreated(next: Channel) {
-    setChannelList((prev) =>
-      prev.some((c) => c.id === next.id) ? prev : [...prev, next],
-    )
-    router.push(`/?channel=${next.slug}`)
-    setSidebarOpen(false)
-  }
+  const handleChannelCreated = useCallback(
+    (next: Channel) => {
+      void switchChannel(next)
+    },
+    [switchChannel],
+  )
 
-  function handleChannelDeleted(channelId: string, _fallback: Channel) {
-    setChannelList((prev) => prev.filter((c) => c.id !== channelId))
-    setSidebarOpen(false)
-  }
+  const handleChannelDeleted = useCallback(
+    (channelId: string, fallback: Channel) => {
+      delete messageCacheRef.current[channelId]
+      if (activeChannelRef.current.id === channelId) {
+        void switchChannel(fallback)
+      }
+    },
+    [switchChannel],
+  )
+
+  const handleChannelUpdated = useCallback(
+    (updated: Channel) => {
+      if (activeChannelRef.current.id !== updated.id) return
+      const previousSlug = activeChannelRef.current.slug
+      activeChannelRef.current = updated
+      setActiveChannel(updated)
+      if (updated.slug !== previousSlug) {
+        setActiveChannelSlug(updated.slug)
+        const loc = chatLocationFromChannel(updated, memberId)
+        writeStoredChatLocation(loc)
+        syncChatUrl(updated, memberId)
+      }
+    },
+    [memberId, setActiveChannelSlug],
+  )
+
+  const canManageChannels =
+    memberRole === "owner" || memberRole === "admin"
+  const directAgent = activeChannel.direct_agent_id
+    ? (agents.find((a) => a.id === activeChannel.direct_agent_id) ?? null)
+    : null
+  const directMember = activeChannel.direct_peer_member_id
+    ? (shell.workspaceMembers.find(
+        (m) => m.id === activeChannel.direct_peer_member_id,
+      ) ?? null)
+    : null
+
+  useEffect(() => {
+    registerChatBridge({
+      onChannelSelect: (next) => {
+        void switchChannel(next)
+      },
+      onChannelCreated: handleChannelCreated,
+      onChannelDeleted: handleChannelDeleted,
+      onProfileUpdated: handleProfileUpdated,
+    })
+    return () => registerChatBridge(null)
+  }, [
+    registerChatBridge,
+    switchChannel,
+    handleChannelCreated,
+    handleChannelDeleted,
+    handleProfileUpdated,
+  ])
 
   function handleActionBlock(block: ActionBlock) {
     setPendingBlocks((prev) => {
@@ -477,6 +779,28 @@ export function Chat({
     }
   }
 
+  async function handleDeleteMessage(message: Message) {
+    const confirmed = await confirm({
+      title: "Delete message?",
+      description: "This cannot be undone.",
+      confirmLabel: "Delete",
+      variant: "destructive",
+    })
+    if (!confirmed) return
+
+    const supabase = createClient()
+    try {
+      await deleteMessage(supabase, message.id)
+      applyMessageRemoved(message)
+      toast("Message deleted", "success")
+    } catch (err) {
+      toast(
+        err instanceof Error ? err.message : "Could not delete message",
+        "error",
+      )
+    }
+  }
+
   const pinLimitReached = pinnedMessages.length >= MAX_PINNED_MESSAGES
 
   function makeStreamHandlers(threadId?: string | null) {
@@ -504,18 +828,24 @@ export function Chat({
   }
 
   const threadProps = {
-    channelId: channel.id,
-    channelSlug: channel.slug,
+    channelId: activeChannel.id,
+    channelSlug: activeChannel.slug,
     workspaceId,
     defaultAgentId: agentId,
     agents,
+    invokableAgents,
+    skipKeywordTriggers: isMemberDm,
+    directAgentId: activeChannel.direct_agent_id,
     agentsGloballyPaused,
     memberId,
     senderName: userDisplayName,
     onActionBlock: handleActionBlock,
     onMessageSent: handleMessageSent,
     onPinToggle: handlePinToggle,
+    onDelete: handleDeleteMessage,
+    canDelete: messageCanDelete,
     pinLimitReached,
+    onCloseThread: () => setExpandedThreadId(null),
     ...makeStreamHandlers(expandedThreadId),
   }
 
@@ -562,45 +892,19 @@ export function Chat({
   }
 
   return (
-    <div className="flex h-dvh overflow-hidden bg-background text-foreground">
-      <Sidebar
-        workspaces={workspaces}
-        channels={channelList}
-        activeChannelSlug={channel.slug}
-        displayName={userDisplayName}
-        email={userEmail}
-        workspaceId={workspace.id}
-        memberRole={memberRole}
-        open={sidebarOpen}
-        onClose={() => setSidebarOpen(false)}
-        onChannelCreated={handleChannelCreated}
-        onChannelDeleted={handleChannelDeleted}
-        settingsSection={settingsSection}
-      />
-      <div className="relative flex min-w-0 flex-1 flex-col">
-        {settingsSection && (
-            <SettingsModal
-              workspaceName={workspace.name}
-              channelSlug={channel.slug}
-              section={
-                settingsSection === "workspace" &&
-                memberRole !== "owner" &&
-                memberRole !== "admin"
-                  ? "profile"
-                  : settingsSection
-              }
-              memberRole={memberRole}
-              agents={agents}
-              channels={channelList}
-            />
-        )}
+    <>
         <ChannelHeader
-          channelName={channel.name}
-          channelSlug={channel.slug}
+          channel={activeChannel}
           workspaceName={workspace.name}
-          settingsSection={settingsSection}
+          directAgent={directAgent}
+          directMember={directMember}
+          canManageChannel={
+            canManageChannels && activeChannel.type !== "direct"
+          }
+          onChannelUpdated={handleChannelUpdated}
           activeTab={channelTab}
           pinnedCount={pinnedMessages.length}
+          memberCount={channelMemberCount}
           onTabChange={setChannelTab}
           pendingApprovalCount={pendingBlocks.length}
           searchQuery={searchQuery}
@@ -611,14 +915,12 @@ export function Chat({
             setSearchQuery("")
             setSearchResults([])
           }}
-          onMenuOpen={() => setSidebarOpen(true)}
         />
         {agentsGloballyPaused && (
           <div className="shrink-0 border-b bg-destructive/10 px-4 py-2 text-center text-sm text-destructive">
             All agents are paused for this workspace. Resume in{" "}
             <Link
-              href={chatUrl(channel.slug, "agents")}
-              scroll={false}
+              href={settingsUrl("agents")}
               className="underline underline-offset-2"
             >
               settings
@@ -626,14 +928,20 @@ export function Chat({
             .
           </div>
         )}
-        <div className="flex min-h-0 flex-1 flex-col">
-          {channelTab === "messages" ? (
-            <>
-              <MessageList
+        <div className="relative flex min-h-0 flex-1 flex-col">
+          <div
+            className={
+              channelTab === "messages"
+                ? "flex min-h-0 flex-1 flex-col"
+                : "hidden"
+            }
+          >
+            <MessageList
               messages={topLevelMessages}
               streamState={streamState}
               streamingAgent={streamState?.agent}
               agentsById={agentsById}
+              membersById={membersById}
               expandedThreadId={expandedThreadId}
               threadReplies={threadReplies}
               highlightMessageId={highlightMessageId}
@@ -641,6 +949,9 @@ export function Chat({
               onOpenThread={openThread}
               onToggleThread={toggleThread}
               onPinToggle={handlePinToggle}
+              onDelete={handleDeleteMessage}
+              canDelete={messageCanDelete}
+              currentMemberId={memberId}
               pinLimitReached={pinLimitReached}
               threadProps={threadProps}
             />
@@ -650,23 +961,41 @@ export function Chat({
               onDecide={handleDecide}
             />
             <MessageInput
-              channelId={channel.id}
-              channelSlug={channel.slug}
+              channelId={activeChannel.id}
+              channelSlug={activeChannel.slug}
               workspaceId={workspaceId}
               defaultAgentId={agentId}
               agents={agents}
+              invokableAgents={invokableAgents}
+              skipKeywordTriggers={isMemberDm}
               agentsGloballyPaused={agentsGloballyPaused}
               memberId={memberId}
               senderName={userDisplayName}
+              directAgentId={activeChannel.direct_agent_id}
+              prefill={composerPrefill}
+              onPrefillApplied={() => setComposerPrefill(null)}
               {...makeStreamHandlers(null)}
               onActionBlock={handleActionBlock}
               onMessageSent={handleMessageSent}
             />
-            </>
-          ) : (
+            {!isMemberDm && (
+              <AgentFtue
+                agents={agents}
+                memberId={memberId}
+                workspaceId={workspaceId}
+                onTryExample={setComposerPrefill}
+              />
+            )}
+          </div>
+          <div
+            className={
+              channelTab === "pins" ? "flex min-h-0 flex-1 flex-col" : "hidden"
+            }
+          >
             <PinsView
               pins={pinnedMessages}
               agentsById={agentsById}
+              membersById={membersById}
               onSelect={(message) => {
                 setChannelTab("messages")
                 void navigateToMessage(message)
@@ -675,9 +1004,28 @@ export function Chat({
                 void handlePinToggle(message, false)
               }}
             />
-          )}
+          </div>
+          <div
+            className={
+              channelTab === "members" ? "flex min-h-0 flex-1 flex-col" : "hidden"
+            }
+          >
+            <ChannelMembersView
+              channelId={activeChannel.id}
+              workspaceId={workspaceId}
+              channelSlug={activeChannel.slug}
+              members={channelMembers}
+              agents={isMemberDm ? channelAgents : agents}
+              channelType={activeChannel.type}
+              memberRole={memberRole}
+              currentMemberId={memberId}
+              loading={!channelMembersLoaded}
+              isMemberDirect={isMemberDm}
+              onMembersChange={setChannelMembers}
+              onAgentsChange={setChannelAgents}
+            />
+          </div>
         </div>
-      </div>
 
       {mobileThreadRoot && (
         <ThreadView
@@ -692,11 +1040,15 @@ export function Chat({
               : null
           }
           agentsById={agentsById}
-          channelId={channel.id}
-          channelSlug={channel.slug}
+          membersById={membersById}
+          channelId={activeChannel.id}
+          channelSlug={activeChannel.slug}
           workspaceId={workspaceId}
           defaultAgentId={agentId}
           agents={agents}
+          invokableAgents={invokableAgents}
+          skipKeywordTriggers={isMemberDm}
+          directAgentId={activeChannel.direct_agent_id}
           agentsGloballyPaused={agentsGloballyPaused}
           memberId={memberId}
           senderName={userDisplayName}
@@ -705,10 +1057,12 @@ export function Chat({
           onActionBlock={handleActionBlock}
           onMessageSent={handleMessageSent}
           onPinToggle={handlePinToggle}
+          onDelete={handleDeleteMessage}
+          canDelete={messageCanDelete}
           pinLimitReached={pinLimitReached}
           highlightMessageId={highlightMessageId}
         />
       )}
-    </div>
+    </>
   )
 }

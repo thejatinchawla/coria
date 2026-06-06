@@ -1,5 +1,6 @@
 "use client"
 
+import { resolveAgentAvatarUrl } from "@/lib/agents"
 import { cn } from "@/lib/utils"
 
 const SIZE = {
@@ -9,24 +10,27 @@ const SIZE = {
 
 export function AgentAvatar({
   name,
+  mentionSlug,
   color = "#6366f1",
   avatarUrl,
   size = "md",
   className,
 }: {
   name: string
+  mentionSlug?: string | null
   color?: string
   avatarUrl?: string | null
   size?: keyof typeof SIZE
   className?: string
 }) {
   const initial = (name?.charAt(0) || "?").toUpperCase()
+  const resolvedUrl = resolveAgentAvatarUrl({ mentionSlug, avatarUrl, name })
 
-  if (avatarUrl) {
+  if (resolvedUrl) {
     return (
       // eslint-disable-next-line @next/next/no-img-element
       <img
-        src={avatarUrl}
+        src={resolvedUrl}
         alt=""
         className={cn("shrink-0 rounded-full object-cover", SIZE[size], className)}
       />

@@ -27,7 +27,7 @@ export function ActionBlockCard({
         Action requires approval
       </div>
       <p className="mb-1 text-sm font-medium">{block.summary}</p>
-      <p className="mb-3 font-mono text-xs text-muted-foreground">
+      <p className="mb-3 break-all font-mono text-xs text-muted-foreground">
         {block.tool_name}
       </p>
 
@@ -35,7 +35,7 @@ export function ActionBlockCard({
         <div className="flex flex-wrap gap-2">
           <Button
             size="sm"
-            disabled={deciding}
+            loading={deciding}
             onClick={() => onDecide("approved")}
             className="gap-1.5"
           >
@@ -45,7 +45,7 @@ export function ActionBlockCard({
           <Button
             size="sm"
             variant="outline"
-            disabled={deciding}
+            loading={deciding}
             onClick={() => onDecide("declined")}
             className="gap-1.5"
           >

@@ -1,6 +1,6 @@
-import os
+import env  # noqa: F401 — load backend/.env before other local imports
 
-from dotenv import load_dotenv
+import os
 from fastapi import BackgroundTasks, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
@@ -18,10 +18,12 @@ from agents_admin import (
 from audit_admin import export_audit_log, list_audit_log
 from db import get_supabase
 from integrations.admin import (
+    complete_github_oauth,
     disconnect_github,
     get_github_integration,
     save_github_pat,
 )
+from integrations.github_oauth import oauth_authorize_url
 from llm.admin import disconnect_llm, get_llm_integration, save_llm_api_key
 from workspace_settings import fetch_workspace_settings
 from members_admin import (
@@ -44,8 +46,6 @@ from triggers.admin import (
     update_trigger,
 )
 from triggers.runner import handle_keyword_message, run_due_cron_triggers, run_trigger
-
-load_dotenv()
 
 
 def validate_env() -> None:
@@ -155,6 +155,18 @@ class GitHubIntegrationRequest(BaseModel):
     workspace_id: str
     pat: str
     member_id: str
+
+
+class GitHubOAuthCompleteRequest(BaseModel):
+    workspace_id: str
+    member_id: str
+    code: str
+    redirect_uri: str
+
+
+class GitHubOAuthStartRequest(BaseModel):
+    redirect_uri: str
+    state: str
 
 
 class TriggerCreateRequest(BaseModel):
@@ -404,6 +416,36 @@ async def github_integration_save(
     return {"integration": integration}
 
 
+@app.post("/integrations/github/oauth/start")
+async def github_oauth_start(
+    req: GitHubOAuthStartRequest,
+    x_invoke_secret: str | None = Header(default=None),
+):
+    verify_invoke_secret(x_invoke_secret)
+    authorize_url = oauth_authorize_url(
+        redirect_uri=req.redirect_uri,
+        state=req.state,
+    )
+    return {"authorize_url": authorize_url}
+
+
+@app.post("/integrations/github/oauth/complete")
+async def github_oauth_complete(
+    req: GitHubOAuthCompleteRequest,
+    x_invoke_secret: str | None = Header(default=None),
+):
+    verify_invoke_secret(x_invoke_secret)
+    supabase = get_supabase()
+    integration = await complete_github_oauth(
+        supabase,
+        workspace_id=req.workspace_id,
+        member_id=req.member_id,
+        code=req.code,
+        redirect_uri=req.redirect_uri,
+    )
+    return {"integration": integration}
+
+
 @app.delete("/integrations/github")
 async def github_integration_delete(
     workspace_id: str,
@@ -589,7 +631,7 @@ async def members_me_patch(
         supabase,
         workspace_id=req.workspace_id,
         user_id=req.user_id,
-        payload=req.model_dump(exclude={"workspace_id", "user_id"}, exclude_none=True),
+        payload=req.model_dump(exclude={"workspace_id", "user_id"}, exclude_unset=True),
     )
     return {"profile": profile}
 

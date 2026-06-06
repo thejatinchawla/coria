@@ -207,28 +207,4 @@ ON CONFLICT (workspace_id, tool_name) DO UPDATE
   SET requires_approval = EXCLUDED.requires_approval,
       enabled = EXCLUDED.enabled;
 
--- Dev agent for M1 exit: @dev posts GitHub comments (with approval)
-INSERT INTO agents (
-  id,
-  workspace_id,
-  name,
-  mention_slug,
-  system_prompt,
-  allowed_tools,
-  channel_scope,
-  status
-)
-VALUES (
-  '00000000-0000-4000-8000-000000000004',
-  '00000000-0000-4000-8000-000000000001',
-  'Dev',
-  'dev',
-  'You are Dev, an engineering AI teammate in Coria. You help with code, GitHub repos, and issues. When asked to comment on a GitHub issue, use github_post_comment with the repo and issue number. Be concise and technical.',
-  ARRAY['github_read', 'github_post_comment']::text[],
-  '{}',
-  'active'
-)
-ON CONFLICT (workspace_id, mention_slug) DO UPDATE
-  SET allowed_tools = EXCLUDED.allowed_tools,
-      system_prompt = EXCLUDED.system_prompt,
-      status = 'active';
+-- Additional agents (e.g. engineering with github_post_comment) are created in Settings → Agents.

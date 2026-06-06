@@ -1,0 +1,22 @@
+<!-- Supabase Dashboard → Authentication → Email Templates → Invite user (replace ENTIRE body) -->
+<div style="background:#FAFAF7;padding:40px 24px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif">
+  <div style="max-width:480px;margin:0 auto">
+
+    <img src="https://wfpqvesxvenscrhcyfxx.supabase.co/storage/v1/object/public/assets/logo.png" width="36" height="36" alt="Coria" style="display:block;border:0;outline:none;margin:0 0 24px" />
+
+    <p style="font-size:15px;line-height:1.6;color:#0A0A0A;margin:0 0 16px">You've been invited to Coria</p>
+
+    <p style="font-size:15px;line-height:1.6;color:#5A5A5A;margin:0 0 24px">You've been invited to create an account on <a href="{{ .SiteURL }}" style="color:#0A0A0A;text-decoration:underline">Coria</a>. Follow the link below to accept your invitation and get started.</p>
+
+    <p style="margin:0 0 28px">
+      <a href="{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=invite&next=%2Fauth%2Fjoin" style="display:inline-block;background:#0A0A0A;color:#ffffff;font-size:14px;font-weight:500;text-decoration:none;padding:12px 24px;border-radius:5px;letter-spacing:0.01em">Accept invitation</a>
+    </p>
+
+    <p style="font-size:15px;line-height:1.6;color:#5A5A5A;margin:0 0 28px">The Coria team</p>
+
+    <hr style="border:none;border-top:1px solid #E8E8E4;margin:0 0 16px" />
+
+    <p style="font-size:12px;line-height:1.6;color:#999;margin:0">You received this because someone invited you to Coria. If this wasn't you, you can safely ignore it.</p>
+
+  </div>
+</div>
