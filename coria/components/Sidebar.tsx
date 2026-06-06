@@ -141,7 +141,7 @@ export function Sidebar({
         slug,
         type: "hybrid",
       })
-      .select("id,workspace_id,name,slug,type,created_at")
+      .select("id,workspace_id,name,slug,type,description,created_at")
       .single()
 
     setCreating(false)

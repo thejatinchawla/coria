@@ -19,6 +19,7 @@ import type {
   ActionBlock,
   Agent,
   Channel,
+  Member,
   MemberRole,
   Message,
   MessageSearchHit,
@@ -159,6 +160,23 @@ export function Chat({
     () => Object.fromEntries(agents.map((a) => [a.id, a])),
     [agents],
   )
+  const [membersById, setMembersById] = useState<Record<string, Member>>({})
+
+  useEffect(() => {
+    const supabase = createClient()
+    void (async () => {
+      const { data, error } = await supabase
+        .from("members")
+        .select(
+          "id,workspace_id,user_id,display_name,role,avatar_url,bio,created_at",
+        )
+        .eq("workspace_id", workspaceId)
+      if (error || !data) return
+      setMembersById(
+        Object.fromEntries(data.map((member) => [member.id, member as Member])),
+      )
+    })()
+  }, [workspaceId])
   const agentsGloballyPaused = workspaceSettings?.agents_globally_paused ?? false
 
   const topLevelMessages = useMemo(
@@ -561,6 +579,23 @@ export function Chat({
     [switchChannel],
   )
 
+  const handleChannelUpdated = useCallback(
+    (updated: Channel) => {
+      if (activeChannelRef.current.id !== updated.id) return
+      const previousSlug = activeChannelRef.current.slug
+      activeChannelRef.current = updated
+      setActiveChannel(updated)
+      if (updated.slug !== previousSlug) {
+        setActiveChannelSlug(updated.slug)
+        syncChatUrl(updated.slug)
+      }
+    },
+    [setActiveChannelSlug],
+  )
+
+  const canManageChannels =
+    memberRole === "owner" || memberRole === "admin"
+
   useEffect(() => {
     registerChatBridge({
       onChannelSelect: (next) => {
@@ -756,9 +791,10 @@ export function Chat({
   return (
     <>
         <ChannelHeader
-          channelName={activeChannel.name}
-          channelSlug={activeChannel.slug}
+          channel={activeChannel}
           workspaceName={workspace.name}
+          canManageChannel={canManageChannels}
+          onChannelUpdated={handleChannelUpdated}
           activeTab={channelTab}
           pinnedCount={pinnedMessages.length}
           onTabChange={setChannelTab}
@@ -797,6 +833,7 @@ export function Chat({
               streamState={streamState}
               streamingAgent={streamState?.agent}
               agentsById={agentsById}
+              membersById={membersById}
               expandedThreadId={expandedThreadId}
               threadReplies={threadReplies}
               highlightMessageId={highlightMessageId}
@@ -845,6 +882,7 @@ export function Chat({
             <PinsView
               pins={pinnedMessages}
               agentsById={agentsById}
+              membersById={membersById}
               onSelect={(message) => {
                 setChannelTab("messages")
                 void navigateToMessage(message)
@@ -869,6 +907,7 @@ export function Chat({
               : null
           }
           agentsById={agentsById}
+          membersById={membersById}
           channelId={activeChannel.id}
           channelSlug={activeChannel.slug}
           workspaceId={workspaceId}

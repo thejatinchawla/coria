@@ -4,13 +4,15 @@ import { useState } from "react"
 import {
   Menu,
   MessageSquare,
+  Pencil,
   Pin,
   Search,
   Settings,
   ShieldAlert,
   X,
 } from "lucide-react"
-import type { MessageSearchHit } from "@/types"
+import type { Channel, MessageSearchHit } from "@/types"
+import { ChannelSettingsDialog } from "@/components/ChannelSettingsDialog"
 import { cn } from "@/lib/utils"
 import Link from "next/link"
 import { useSidebarMenu } from "@/components/AppShell"
@@ -67,10 +69,10 @@ function ChannelTabButton({
 }
 
 export function ChannelHeader({
-  channelName,
-  channelSlug,
+  channel,
   workspaceName,
-  channelDescription,
+  canManageChannel = false,
+  onChannelUpdated,
   activeTab = "messages",
   pinnedCount = 0,
   onTabChange,
@@ -81,10 +83,10 @@ export function ChannelHeader({
   onSearchSelect,
   onMenuOpen,
 }: {
-  channelName: string
-  channelSlug: string
+  channel: Channel
   workspaceName: string
-  channelDescription?: string
+  canManageChannel?: boolean
+  onChannelUpdated?: (channel: Channel) => void
   activeTab?: ChannelTab
   pinnedCount?: number
   onTabChange?: (tab: ChannelTab) => void
@@ -97,10 +99,11 @@ export function ChannelHeader({
 }) {
   const { openSidebar } = useSidebarMenu()
   const [searchOpen, setSearchOpen] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
 
   const subtitle =
-    channelDescription ??
-    (channelName === "general"
+    channel.description?.trim() ||
+    (channel.name === "general"
       ? "Workspace-wide updates and announcements"
       : workspaceName)
 
@@ -118,7 +121,7 @@ export function ChannelHeader({
           </button>
           <div className="min-w-0">
             <div className="flex min-w-0 items-baseline gap-2">
-              <h1 className="truncate text-[15px] font-bold">#{channelName}</h1>
+              <h1 className="truncate text-[15px] font-bold">#{channel.name}</h1>
               <span className="hidden truncate text-sm text-muted-foreground sm:inline">
                 {subtitle}
               </span>
@@ -129,6 +132,16 @@ export function ChannelHeader({
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-0.5">
+          {canManageChannel && onChannelUpdated && (
+            <button
+              type="button"
+              aria-label="Edit channel"
+              onClick={() => setSettingsOpen(true)}
+              className="rounded-md p-2 text-muted-foreground hover:bg-muted"
+            >
+              <Pencil className="size-5" />
+            </button>
+          )}
           {pendingApprovalCount > 0 && (
             <span
               className={cn(
@@ -177,6 +190,15 @@ export function ChannelHeader({
             onClick={() => onTabChange("pins")}
           />
         </nav>
+      )}
+
+      {canManageChannel && onChannelUpdated && (
+        <ChannelSettingsDialog
+          channel={channel}
+          open={settingsOpen}
+          onClose={() => setSettingsOpen(false)}
+          onUpdated={onChannelUpdated}
+        />
       )}
 
       {searchOpen && onSearchChange && (

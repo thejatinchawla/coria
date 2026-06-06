@@ -19,12 +19,15 @@ import {
   type ReactNode,
 } from "react"
 import { createPortal } from "react-dom"
-import { AgentAvatar } from "@/components/AgentAvatar"
+import {
+  MessageSenderAvatar,
+  SenderNameWithProfile,
+} from "@/components/MessageSenderAvatar"
 import { Button } from "@/components/ui/button"
 import { MessageTimestamp } from "@/components/MessageTimestamp"
 import { ReasoningTrace } from "@/components/ReasoningTrace"
 import { cn } from "@/lib/utils"
-import type { Agent, Message as MessageType } from "@/types"
+import type { Agent, Member, Message as MessageType } from "@/types"
 
 const bubbleMaxWidth =
   "max-w-[min(85%,32rem)] sm:max-w-[70%]"
@@ -66,13 +69,6 @@ function MessageActionsOverlay({
       {children}
     </div>
   )
-}
-
-function humanInitials(name: string) {
-  const parts = name.trim().split(/\s+/).filter(Boolean)
-  if (parts.length === 0) return "?"
-  if (parts.length === 1) return parts[0]!.slice(0, 2).toUpperCase()
-  return `${parts[0]![0] ?? ""}${parts[1]![0] ?? ""}`.toUpperCase()
 }
 
 function isOwnHumanMessage(
@@ -264,6 +260,7 @@ function MessageActionsMenu({
 export function Message({
   message,
   agent,
+  member,
   compact = false,
   replyCount = 0,
   threadExpanded = false,
@@ -280,6 +277,7 @@ export function Message({
 }: {
   message: MessageType
   agent?: Agent | null
+  member?: Member | null
   compact?: boolean
   replyCount?: number
   threadExpanded?: boolean
@@ -386,22 +384,13 @@ export function Message({
 
   const avatarSlot = !compact && (
     <div className="size-9 shrink-0 sm:size-10">
-      {!groupedWithPrevious &&
-        (isAgent ? (
-          <AgentAvatar
-            name={agent?.name ?? message.sender_name}
-            mentionSlug={agent?.mention_slug}
-            color={agent?.color}
-            avatarUrl={agent?.avatar_url}
-          />
-        ) : (
-          <div
-            className="flex size-9 items-center justify-center rounded-md bg-primary/10 text-xs font-semibold text-primary sm:size-10"
-            aria-hidden
-          >
-            {humanInitials(message.sender_name)}
-          </div>
-        ))}
+      {!groupedWithPrevious && (
+        <MessageSenderAvatar
+          message={message}
+          agent={agent}
+          member={member}
+        />
+      )}
     </div>
   )
 
@@ -418,9 +407,12 @@ export function Message({
         >
           {!groupedWithPrevious && (
             <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-              <span className="text-xs text-muted-foreground">
-                {message.sender_name}
-              </span>
+              <SenderNameWithProfile
+                message={message}
+                agent={agent}
+                member={member}
+                className="text-xs text-muted-foreground hover:underline"
+              />
               {isAgent && <AgentAiBadge />}
               {pinnedBadge}
               {showTimestamp && (

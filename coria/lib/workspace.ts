@@ -158,7 +158,7 @@ export async function fetchChannels(
 ): Promise<Channel[]> {
   const { data, error } = await supabase
     .from("channels")
-    .select("id,workspace_id,name,slug,type,created_at")
+    .select("id,workspace_id,name,slug,type,description,created_at")
     .eq("workspace_id", workspaceId)
     .order("created_at", { ascending: true })
 
@@ -177,7 +177,7 @@ export async function fetchChannelBySlug(
 ): Promise<Channel | null> {
   const { data, error } = await supabase
     .from("channels")
-    .select("id,workspace_id,name,slug,type,created_at")
+    .select("id,workspace_id,name,slug,type,description,created_at")
     .eq("workspace_id", workspaceId)
     .eq("slug", slug)
     .maybeSingle()
@@ -386,6 +386,71 @@ export async function deleteWorkspace(
   }
 
   return { ok: true }
+}
+
+export async function updateChannel(
+  supabase: SupabaseClient,
+  workspaceId: string,
+  channelId: string,
+  input: {
+    name: string
+    description?: string | null
+    type: Channel["type"]
+  },
+): Promise<
+  | { ok: true; channel: Channel }
+  | { ok: false; error: string; status?: number }
+> {
+  const name = input.name.trim()
+  if (!name) {
+    return { ok: false, error: "Channel name is required.", status: 400 }
+  }
+
+  const slug = slugifyChannelName(name)
+  if (!slug) {
+    return {
+      ok: false,
+      error: "Use letters or numbers in the channel name.",
+      status: 400,
+    }
+  }
+
+  const description = input.description?.trim() || null
+  if (description && description.length > 280) {
+    return {
+      ok: false,
+      error: "Description must be 280 characters or fewer.",
+      status: 400,
+    }
+  }
+
+  if (input.type !== "hybrid" && input.type !== "human_only") {
+    return { ok: false, error: "Invalid channel type.", status: 400 }
+  }
+
+  const { data, error } = await supabase
+    .from("channels")
+    .update({
+      name,
+      slug,
+      description,
+      type: input.type,
+    })
+    .eq("id", channelId)
+    .eq("workspace_id", workspaceId)
+    .select("id,workspace_id,name,slug,type,description,created_at")
+    .single()
+
+  if (error) {
+    const status = error.code === "23505" ? 409 : 400
+    const message =
+      error.code === "23505"
+        ? "A channel with that name already exists."
+        : error.message
+    return { ok: false, error: message, status }
+  }
+
+  return { ok: true, channel: data as Channel }
 }
 
 export async function deleteChannel(

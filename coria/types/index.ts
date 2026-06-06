@@ -19,6 +19,7 @@ export type Channel = {
   name: string
   slug: string
   type: ChannelType
+  description?: string | null
   created_at: string
 }
 

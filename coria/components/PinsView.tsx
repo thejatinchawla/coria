@@ -1,19 +1,22 @@
 "use client"
 
 import { Pin, PinOff } from "lucide-react"
-import { AgentAvatar } from "@/components/AgentAvatar"
+import { MessageSenderAvatar, SenderNameWithProfile } from "@/components/MessageSenderAvatar"
 import { MessageTimestamp } from "@/components/MessageTimestamp"
-import type { Agent, Message } from "@/types"
+import { messageAgent, messageMember } from "@/lib/message-sender"
+import type { Agent, Member, Message } from "@/types"
 import { cn } from "@/lib/utils"
 
 export function PinsView({
   pins,
   agentsById,
+  membersById,
   onSelect,
   onUnpin,
 }: {
   pins: Message[]
   agentsById?: Record<string, Agent>
+  membersById?: Record<string, Member>
   onSelect: (message: Message) => void
   onUnpin: (message: Message) => void
 }) {
@@ -37,36 +40,27 @@ export function PinsView({
       <div className="mx-auto max-w-3xl px-3 sm:px-6">
         <ul className="divide-y divide-border">
           {pins.map((message) => {
-            const agent =
-              message.sender_id && agentsById
-                ? agentsById[message.sender_id]
-                : undefined
+            const agent = messageAgent(message, agentsById)
+            const member = messageMember(message, membersById)
             const isAgent = message.sender_type === "agent"
 
             return (
               <li key={message.id} className="group">
                 <article className="flex gap-3 py-4 sm:gap-4">
-                  {isAgent ? (
-                    <AgentAvatar
-                      name={agent?.name ?? message.sender_name}
-                      mentionSlug={agent?.mention_slug}
-                      color={agent?.color}
-                      avatarUrl={agent?.avatar_url}
-                      size="sm"
-                    />
-                  ) : (
-                    <div
-                      className="flex size-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-xs font-semibold text-primary sm:size-10"
-                      aria-hidden
-                    >
-                      {message.sender_name.slice(0, 1).toUpperCase()}
-                    </div>
-                  )}
+                  <MessageSenderAvatar
+                    message={message}
+                    agent={agent}
+                    member={member}
+                    size="sm"
+                  />
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                      <span className="text-sm font-bold">
-                        {message.sender_name}
-                      </span>
+                      <SenderNameWithProfile
+                        message={message}
+                        agent={agent}
+                        member={member}
+                        className="text-sm font-bold hover:underline"
+                      />
                       <MessageTimestamp
                         iso={message.created_at}
                         className="text-xs text-muted-foreground"

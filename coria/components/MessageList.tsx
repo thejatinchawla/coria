@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import { ChevronDown } from "lucide-react"
-import type { Agent, Message as MessageType } from "@/types"
+import type { Agent, Member, Message as MessageType } from "@/types"
+import { messageAgent, messageMember } from "@/lib/message-sender"
 import { Message } from "@/components/Message"
 import { AgentThinking } from "@/components/AgentThinking"
 import { StreamingMessage } from "@/components/StreamingMessage"
@@ -22,6 +23,7 @@ export function MessageList({
   streamState,
   streamingAgent,
   agentsById,
+  membersById,
   expandedThreadId,
   threadReplies,
   highlightMessageId,
@@ -39,6 +41,7 @@ export function MessageList({
   streamState?: { content: string; status?: string } | null
   streamingAgent?: Pick<Agent, "name" | "color" | "avatar_url"> | null
   agentsById?: Record<string, Agent>
+  membersById?: Record<string, Member>
   expandedThreadId?: string | null
   threadReplies?: Record<string, MessageType[]>
   highlightMessageId?: string | null
@@ -177,11 +180,8 @@ export function MessageList({
               showTimestamp={shouldShowMessageTimestamp(messages, index)}
               groupedWithPrevious={groupedWithPrevious}
               groupedWithNext={groupedWithNext}
-              agent={
-                message.sender_id && agentsById
-                  ? agentsById[message.sender_id]
-                  : undefined
-              }
+              agent={messageAgent(message, agentsById)}
+              member={messageMember(message, membersById)}
               replyCount={message.reply_count ?? 0}
               threadExpanded={expandedThreadId === message.id}
               highlight={highlightMessageId === message.id}
@@ -223,6 +223,7 @@ export function MessageList({
                         : null
                     }
                     agentsById={agentsById}
+                    membersById={membersById}
                     {...threadProps}
                   />
                 </div>

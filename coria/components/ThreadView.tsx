@@ -1,7 +1,7 @@
 "use client"
 
 import { ArrowLeft } from "lucide-react"
-import type { ActionBlock, Agent, Message } from "@/types"
+import type { ActionBlock, Agent, Member, Message } from "@/types"
 import { MessageList } from "@/components/MessageList"
 import { MessageInput } from "@/components/MessageInput"
 import { Button } from "@/components/ui/button"
@@ -12,6 +12,7 @@ export function ThreadView({
   streamState,
   streamingAgent,
   agentsById,
+  membersById,
   channelId,
   channelSlug,
   workspaceId,
@@ -43,6 +44,7 @@ export function ThreadView({
   } | null
   streamingAgent?: Pick<Agent, "name" | "color" | "avatar_url"> | null
   agentsById?: Record<string, Agent>
+  membersById?: Record<string, Member>
   channelId: string
   channelSlug: string
   workspaceId: string
@@ -86,6 +88,7 @@ export function ThreadView({
         streamState={streamState}
         streamingAgent={streamingAgent}
         agentsById={agentsById}
+        membersById={membersById}
         highlightMessageId={highlightMessageId}
         onPinToggle={onPinToggle}
         pinLimitReached={pinLimitReached}

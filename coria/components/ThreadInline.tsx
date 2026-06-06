@@ -1,7 +1,8 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import type { Agent, Message } from "@/types"
+import type { Agent, Member, Message } from "@/types"
+import { messageAgent, messageMember } from "@/lib/message-sender"
 import { Message as MessageBubble } from "@/components/Message"
 import { MessageInput } from "@/components/MessageInput"
 import { AgentThinking } from "@/components/AgentThinking"
@@ -18,6 +19,7 @@ export function ThreadInline({
   streamState,
   streamingAgent,
   agentsById,
+  membersById,
   channelId,
   channelSlug,
   workspaceId,
@@ -44,6 +46,7 @@ export function ThreadInline({
   streamState?: { content: string; status?: string } | null
   streamingAgent?: Pick<Agent, "name" | "color" | "avatar_url"> | null
   agentsById?: Record<string, Agent>
+  membersById?: Record<string, Member>
   channelId: string
   channelSlug: string
   workspaceId: string
@@ -86,11 +89,8 @@ export function ThreadInline({
                 showTimestamp={shouldShowMessageTimestamp(replies, index)}
                 groupedWithPrevious={groupedWithPrevious}
                 groupedWithNext={groupedWithNext}
-                agent={
-                  message.sender_id && agentsById
-                    ? agentsById[message.sender_id]
-                    : undefined
-                }
+                agent={messageAgent(message, agentsById)}
+                member={messageMember(message, membersById)}
                 compact
                 highlight={highlightMessageId === message.id}
                 onPinToggle={
