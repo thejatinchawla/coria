@@ -4,6 +4,7 @@ import "./globals.css";
 import { ToastProvider } from "@/components/Toast";
 import { ConfirmProvider } from "@/components/ConfirmDialog";
 import { AuthUrlHandler } from "@/components/AuthUrlHandler";
+import { ThemeProvider } from "@/components/ThemeProvider";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -44,15 +45,18 @@ export default function RootLayout({
   return (
     <html
       lang="en"
+      suppressHydrationWarning
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-dvh flex flex-col overflow-x-hidden">
-        <ToastProvider>
-          <ConfirmProvider>
-            <AuthUrlHandler />
-            {children}
-          </ConfirmProvider>
-        </ToastProvider>
+      <body className="min-h-dvh flex flex-col overflow-x-hidden bg-background text-foreground">
+        <ThemeProvider>
+          <ToastProvider>
+            <ConfirmProvider>
+              <AuthUrlHandler />
+              {children}
+            </ConfirmProvider>
+          </ToastProvider>
+        </ThemeProvider>
       </body>
     </html>
   );
