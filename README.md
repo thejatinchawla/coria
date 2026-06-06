@@ -2,6 +2,8 @@
 
 **Agents that act — with your team's permission.**
 
+![Coria demo — channels, @mention agents, reasoning trace, and approval flow](./docs/screenshots/demo.gif)
+
 Coria is an AI-native team workspace: channels, multiple agents, human-in-the-loop approvals, and governance built in. Think team chat meets specialized AI teammates — not a single chatbot in a sidebar.
 
 > Building in public. Follow progress in [ROADMAP.md](./ROADMAP.md)
