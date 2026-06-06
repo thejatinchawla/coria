@@ -45,9 +45,6 @@ export function SettingsPageView({
             <p className="text-sm text-muted-foreground">{workspaceName}</p>
           </div>
         </div>
-        <Button variant="outline" size="sm" asChild>
-          <Link href={chatUrl(activeChannelSlug)}>Back to chat</Link>
-        </Button>
       </header>
 
       <div className="shrink-0 border-b px-4 py-3">
