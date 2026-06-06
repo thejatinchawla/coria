@@ -210,7 +210,7 @@ CREATE POLICY agent_triggers_write_member ON agent_triggers
 -- trigger_debounce: backend service role only (no client policies)
 
 -- ---------------------------------------------------------------------------
--- tool policy + Dev agent github_create_pr
+-- tool policy: github_create_pr (assign to custom agents via Settings → Agents)
 -- ---------------------------------------------------------------------------
 INSERT INTO tool_policies (workspace_id, tool_name, requires_approval, enabled)
 VALUES
@@ -218,11 +218,6 @@ VALUES
 ON CONFLICT (workspace_id, tool_name) DO UPDATE
   SET requires_approval = EXCLUDED.requires_approval,
       enabled = EXCLUDED.enabled;
-
-UPDATE agents
-SET allowed_tools = ARRAY['github_read', 'github_post_comment', 'github_create_pr']::text[]
-WHERE workspace_id = '00000000-0000-4000-8000-000000000001'
-  AND mention_slug = 'dev';
 
 -- ---------------------------------------------------------------------------
 -- Seed demo triggers (M4 exit criteria)
@@ -261,7 +256,7 @@ INSERT INTO agent_triggers (
 VALUES (
   '00000000-0000-4000-8000-000000000008',
   '00000000-0000-4000-8000-000000000001',
-  '00000000-0000-4000-8000-000000000004',
+  '00000000-0000-4000-8000-000000000003',
   '00000000-0000-4000-8000-000000000002',
   'keyword',
   '{"keywords": ["bug:"], "prompt_prefix": "A teammate reported a bug in the channel. Triage and suggest next steps:"}'::jsonb,
