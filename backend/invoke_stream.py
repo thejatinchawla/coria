@@ -1,30 +1,19 @@
 """SSE streaming invoke with broker + approval pause/resume."""
 
-import json
 import os
 import traceback
 from collections.abc import AsyncIterator
 from typing import Any
 
 from fastapi import HTTPException
-from groq import APIError, AsyncGroq, BadRequestError
 
-from agent import (
-    MAX_AGENT_ITERATIONS,
-    _parse_groq_malformed_tool_from_text,
-    _parse_groq_tool_use_failed,
-    _run_groq_tool,
-    _strip_groq_malformed_tool_syntax,
-    agent_system_prompt,
-    build_system_prompt,
-    now_iso,
-    run_anthropic_loop,
-)
+from agent import agent_system_prompt, build_system_prompt, now_iso
 from broker import ToolContext
 from domain import fetch_agent, fetch_channel, validate_invoke_scope
 from llm.config import resolve_llm_config
 from memory.context import build_cron_digest_context, build_retrieval_context
 from memory.embed import embed_message_row
+from orchestration.stream import run_agent_graph_streaming
 from serialization import serialize_messages
 from streaming import sse_error, sse_event
 from tool_runner import ApprovalPaused
@@ -69,223 +58,6 @@ async def finalize_agent_message(
     return message
 
 
-async def run_groq_loop_streaming(
-    messages: list[dict],
-    system_prompt: str,
-    tool_defs: list[dict],
-    *,
-    working: list[dict] | None = None,
-    steps: list[dict] | None = None,
-    supabase=None,
-    ctx: ToolContext | None = None,
-    trace_id: str | None = None,
-    allow_tools: bool = True,
-    model: str | None = None,
-    api_key: str | None = None,
-) -> AsyncIterator[dict[str, Any]]:
-    """Yield status/token events; final event is internal {'type':'_result', ...}."""
-    model = model or os.getenv("LLM_MODEL")
-    if not model:
-        raise RuntimeError("LLM_MODEL must be set")
-
-    client = AsyncGroq(api_key=api_key) if api_key else AsyncGroq()
-    loop_steps: list[dict] = list(steps or [])
-    loop_working = (
-        list(working)
-        if working is not None
-        else [{"role": "system", "content": system_prompt}]
-        + serialize_messages(messages)
-    )
-    active_tools = tool_defs if allow_tools and tool_defs else []
-
-    for _ in range(MAX_AGENT_ITERATIONS):
-        kwargs: dict[str, Any] = {
-            "model": model,
-            "messages": loop_working,
-            "max_tokens": 1024,
-            "stream": True,
-        }
-        if active_tools:
-            kwargs["tools"] = active_tools
-            kwargs["tool_choice"] = "auto"
-
-        content_buf: list[str] = []
-        tool_calls_acc: dict[int, dict] = {}
-
-        try:
-            stream = await client.chat.completions.create(**kwargs)
-        except BadRequestError as e:
-            recovered = _parse_groq_tool_use_failed(e)
-            if recovered is None:
-                if active_tools:
-                    print(
-                        f"[groq] tool call failed, retry without tools: {e}",
-                        flush=True,
-                    )
-                    active_tools = []
-                    continue
-                raise
-            name, args = recovered
-            content_buf.clear()
-            yield {"type": "status", "message": f"Using {name}…"}
-            try:
-                await _run_groq_tool(
-                    name,
-                    args,
-                    f"recovered_{len(loop_steps)}",
-                    loop_working,
-                    loop_steps,
-                    supabase=supabase,
-                    ctx=ctx,
-                    trace_id=trace_id,
-                )
-            except ApprovalPaused as paused:
-                yield {
-                    "type": "_approval_paused",
-                    "paused": paused,
-                    "working": loop_working,
-                    "steps": loop_steps,
-                }
-                return
-            continue
-
-        try:
-            async for chunk in stream:
-                if not chunk.choices:
-                    continue
-                choice = chunk.choices[0]
-                delta = choice.delta
-                if delta.content:
-                    content_buf.append(delta.content)
-
-                if delta.tool_calls:
-                    for tc in delta.tool_calls:
-                        idx = tc.index or 0
-                        if idx not in tool_calls_acc:
-                            tool_calls_acc[idx] = {
-                                "id": "",
-                                "name": "",
-                                "arguments": "",
-                            }
-                        if tc.id:
-                            tool_calls_acc[idx]["id"] = tc.id
-                        if tc.function:
-                            if tc.function.name:
-                                tool_calls_acc[idx]["name"] = tc.function.name
-                            if tc.function.arguments:
-                                tool_calls_acc[idx]["arguments"] += tc.function.arguments
-        except APIError as e:
-            recovered = _parse_groq_tool_use_failed(e)
-            if recovered is None:
-                if active_tools:
-                    print(
-                        f"[groq] stream tool call failed, retry without tools: {e}",
-                        flush=True,
-                    )
-                    active_tools = []
-                    continue
-                raise
-            name, args = recovered
-            content_buf.clear()
-            yield {"type": "status", "message": f"Using {name}…"}
-            try:
-                await _run_groq_tool(
-                    name,
-                    args,
-                    f"recovered_{len(loop_steps)}",
-                    loop_working,
-                    loop_steps,
-                    supabase=supabase,
-                    ctx=ctx,
-                    trace_id=trace_id,
-                )
-            except ApprovalPaused as paused:
-                yield {
-                    "type": "_approval_paused",
-                    "paused": paused,
-                    "working": loop_working,
-                    "steps": loop_steps,
-                }
-                return
-            continue
-
-        combined = "".join(content_buf)
-
-        if not tool_calls_acc and active_tools:
-            inline_tool = _parse_groq_malformed_tool_from_text(combined)
-            if inline_tool:
-                name, args = inline_tool
-                yield {"type": "status", "message": f"Using {name}…"}
-                try:
-                    await _run_groq_tool(
-                        name,
-                        args,
-                        f"inline_{len(loop_steps)}",
-                        loop_working,
-                        loop_steps,
-                        supabase=supabase,
-                        ctx=ctx,
-                        trace_id=trace_id,
-                    )
-                except ApprovalPaused as paused:
-                    yield {
-                        "type": "_approval_paused",
-                        "paused": paused,
-                        "working": loop_working,
-                        "steps": loop_steps,
-                    }
-                    return
-                continue
-
-        if tool_calls_acc:
-            for _idx in sorted(tool_calls_acc.keys()):
-                tc = tool_calls_acc[_idx]
-                name = tc["name"]
-                try:
-                    args = json.loads(tc["arguments"] or "{}")
-                except json.JSONDecodeError:
-                    args = {}
-                tool_call_id = tc["id"] or f"stream_{len(loop_steps)}"
-                yield {"type": "status", "message": f"Using {name}…"}
-                try:
-                    await _run_groq_tool(
-                        name,
-                        args,
-                        tool_call_id,
-                        loop_working,
-                        loop_steps,
-                        supabase=supabase,
-                        ctx=ctx,
-                        trace_id=trace_id,
-                    )
-                except ApprovalPaused as paused:
-                    yield {
-                        "type": "_approval_paused",
-                        "paused": paused,
-                        "working": loop_working,
-                        "steps": loop_steps,
-                        "pending_tool": {
-                            "name": name,
-                            "args": args,
-                            "tool_call_id": tool_call_id,
-                        },
-                    }
-                    return
-            continue
-
-        reply = _strip_groq_malformed_tool_syntax(combined)
-        if reply:
-            yield {"type": "token", "content": reply}
-        yield {"type": "_result", "reply": reply, "steps": loop_steps}
-        return
-
-    yield {
-        "type": "_result",
-        "reply": "I got stuck in a loop, sorry.",
-        "steps": loop_steps,
-    }
-
-
 async def run_llm_loop_streaming(
     llm,
     messages: list[dict],
@@ -293,35 +65,15 @@ async def run_llm_loop_streaming(
     tool_defs: list[dict],
     **kwargs,
 ) -> AsyncIterator[dict[str, Any]]:
-    """Dispatch streaming invoke to Groq or Anthropic using resolved workspace config."""
-    if llm.provider == "groq":
-        async for event in run_groq_loop_streaming(
-            messages,
-            system_prompt,
-            tool_defs,
-            model=llm.model,
-            api_key=llm.api_key,
-            **kwargs,
-        ):
-            yield event
-        return
-
-    if llm.provider == "anthropic":
-        yield {"type": "status", "message": "Generating reply…"}
-        reply, tool_steps = await run_anthropic_loop(
-            messages,
-            kwargs.get("trace_id"),
-            system_prompt,
-            tool_defs,
-            model=llm.model,
-            api_key=llm.api_key,
-        )
-        if reply:
-            yield {"type": "token", "content": reply}
-        yield {"type": "_result", "reply": reply, "steps": tool_steps}
-        return
-
-    raise RuntimeError(f"Unknown LLM provider: {llm.provider}")
+    """Dispatch streaming invoke via LangGraph orchestration."""
+    async for event in run_agent_graph_streaming(
+        llm,
+        messages,
+        system_prompt,
+        tool_defs,
+        **kwargs,
+    ):
+        yield event
 
 
 async def _persist_approval_pause(
@@ -481,7 +233,7 @@ async def invoke_agent_stream(
                         paused=paused,
                         working=event["working"],
                         steps=event["steps"],
-                        pending_tool=event["pending_tool"],
+                        pending_tool=event.get("pending_tool") or {},
                         trace_id=trace_id,
                         state=base_state,
                     )
