@@ -192,6 +192,22 @@ Embeddings: fastembed (`BAAI/bge-small-en-v1.5`, 384d), written on send via `/me
 
 `prompts.py` is a fallback default; per-agent `system_prompt` in DB takes precedence.
 
+### Orchestration (`orchestration/`)
+
+Agent tool loops run on a **LangGraph** `StateGraph` (`model → tools → model`, max 5 iterations):
+
+```
+backend/orchestration/
+  graph.py    — compiled StateGraph
+  nodes.py    — call_model, execute_tools
+  stream.py   — SSE adapter (run_agent_graph_streaming)
+```
+
+- **Streaming path:** `invoke_stream.py` → `run_agent_graph_streaming` (Groq token stream; Anthropic via LangChain)
+- **Legacy path:** `agent.invoke_agent` → `run_agent_graph` (graph.ainvoke)
+- **Approval pause/resume:** Supabase `reasoning_traces.conversation_state.working` (OpenAI-style dicts); no LangGraph checkpointer
+- **Tool execution:** still via `tool_runner.run_tool_with_broker` — not LangChain auto-tools
+
 ### Tools (`tools.py`)
 
 

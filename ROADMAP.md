@@ -46,6 +46,7 @@ Features landed after the 2026-06-06 architecture snapshot:
 | Clickable links in messages | Chat | Auto-linkify URLs in bubbles |
 | Settings UX pass | Admin | Vertical nav, mobile section picker, workspace-scoped settings |
 | GitHub write tool policies | Trust | Workspace policy sync when enabling write tools on agents |
+| LangGraph orchestration | Agent | `backend/orchestration/` replaces hand-rolled LLM loops; broker + approval unchanged |
 
 ---
 
@@ -192,7 +193,7 @@ From [PRD-V3.md §15](./PRD-V3.md#15-v4-preview-context-only). Not committed dat
 | Theme | Examples |
 |-------|----------|
 | **Integrations** | Jira, Linear, Slack (OAuth); MCP tool registry UI |
-| **Orchestration** | LangGraph workflows; visual trigger builder |
+| **Orchestration** | Visual trigger builder; multi-step workflows beyond react loop |
 | **Memory** | Knowledge graph adjacency |
 | **Enterprise** | SSO, SOC2 audit export, usage billing |
 | **Ecosystem** | Agent marketplace; shared templates |
