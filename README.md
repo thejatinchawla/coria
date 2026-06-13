@@ -125,6 +125,10 @@ GROQ_API_KEY=gsk_...
 
 TAVILY_API_KEY=tvly-...
 
+# Pinecone vector memory (384d cosine index — create in Pinecone console)
+PINECONE_API_KEY=
+PINECONE_INDEX_NAME=coria-memory
+
 SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
 SUPABASE_SERVICE_KEY=eyJ...   # service_role key from step 2
 
@@ -260,6 +264,8 @@ More Supabase notes (cron triggers, embedding backfill): [backend/supabase/READM
 | `APP_URL`              | yes          | Frontend origin (`http://localhost:3000` locally)           |
 | `CORS_ORIGINS`         | optional     | Comma-separated allowed origins                             |
 | `GITHUB_TOKEN`         | optional     | GitHub API for integration tools                            |
+| `PINECONE_API_KEY`     | yes          | Pinecone API key for vector memory                          |
+| `PINECONE_INDEX_NAME`  | yes          | Index name (384 dims, cosine — default `coria-memory`)      |
 
 
 See [backend/.env.example](./backend/.env.example) for RAG and embedding defaults.
@@ -285,7 +291,7 @@ See [coria/.env.example](./coria/.env.example).
 | Layer    | Tech                                               |
 | -------- | -------------------------------------------------- |
 | Frontend | Next.js 16, React 19, Tailwind, Supabase SSR       |
-| Backend  | FastAPI, Groq / Anthropic, Tavily, fastembed (RAG) |
+| Backend  | FastAPI, Groq / Anthropic, Tavily, fastembed + Pinecone (RAG) |
 | Data     | Supabase (Postgres, Auth, Realtime)                |
 | Deploy   | Vercel (frontend) + Render (backend)               |
 

@@ -27,6 +27,27 @@ Copy `backend/.env.example` → `backend/.env` and fill in:
 - `INVOKE_SECRET` (must match the Next.js app)
 - `APP_URL` (e.g. `http://localhost:3000`)
 - `GITHUB_TOKEN` (optional locally; required for GitHub write tools)
+- `PINECONE_API_KEY`, `PINECONE_INDEX_NAME` (vector memory)
+
+## Pinecone (vector memory)
+
+Create a **serverless** index in the [Pinecone console](https://app.pinecone.io):
+
+| Setting    | Value                                              |
+| ---------- | -------------------------------------------------- |
+| Name       | `coria-memory` (or match `PINECONE_INDEX_NAME`)    |
+| Dimensions | **384**                                            |
+| Metric     | **cosine**                                         |
+
+After `supabase db push` (drops the pgvector column), backfill existing catalog rows:
+
+```bash
+cd backend
+source .venv/bin/activate
+python -m memory.migrate_to_pinecone [--workspace-id UUID] [--dry-run]
+```
+
+Or embed from messages per channel via `POST /memory/backfill` below.
 
 ## Auth redirect URLs
 

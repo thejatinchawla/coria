@@ -1,4 +1,4 @@
-"""RAG retrieval: pgvector similarity + recency rerank + token budget."""
+"""RAG retrieval: Pinecone similarity + recency rerank + token budget."""
 
 import os
 import traceback
@@ -6,6 +6,11 @@ from datetime import datetime, timezone
 from typing import Any
 
 from memory.embed import embed_texts
+from memory.pinecone_store import (
+    channel_memory_filter,
+    query_memory,
+    workspace_memory_filter,
+)
 
 RAG_TOP_K = int(os.getenv("RAG_TOP_K", "8"))
 RAG_WORKSPACE_TOP_K = int(os.getenv("RAG_WORKSPACE_TOP_K", "6"))
@@ -71,6 +76,7 @@ def retrieve_channel_memory(
     max_tokens: int = RAG_MAX_CONTEXT_TOKENS,
 ) -> list[dict[str, Any]]:
     """Return ranked memory chunks for prompt injection."""
+    del supabase  # catalog in Postgres; vectors in Pinecone
     text = query.strip()
     if not text:
         return []
@@ -83,21 +89,17 @@ def retrieve_channel_memory(
         return []
 
     try:
-        result = supabase.rpc(
-            "match_channel_memory",
-            {
-                "p_channel_id": channel_id,
-                "p_query_embedding": query_embedding,
-                "p_match_count": top_k,
-                "p_min_similarity": min_similarity,
-            },
-        ).execute()
+        chunks = query_memory(
+            vector=query_embedding,
+            filter_dict=channel_memory_filter(channel_id),
+            top_k=top_k,
+            min_score=min_similarity,
+        )
     except Exception as e:
-        print(f"[memory] retrieve RPC failed: {e}", flush=True)
+        print(f"[memory] pinecone retrieve failed: {e}", flush=True)
         traceback.print_exc()
         return []
 
-    chunks = result.data or []
     if not chunks:
         print(
             f"[memory] retrieve channel={channel_id} hits=0 "
@@ -126,6 +128,7 @@ def retrieve_workspace_memory(
     max_tokens: int = RAG_MAX_CONTEXT_TOKENS,
 ) -> list[dict[str, Any]]:
     """Cross-channel workspace memory (memory_tier = workspace)."""
+    del supabase
     text = query.strip()
     if not text:
         return []
@@ -138,21 +141,17 @@ def retrieve_workspace_memory(
         return []
 
     try:
-        result = supabase.rpc(
-            "match_workspace_memory",
-            {
-                "p_workspace_id": workspace_id,
-                "p_query_embedding": query_embedding,
-                "p_match_count": top_k,
-                "p_min_similarity": min_similarity,
-            },
-        ).execute()
+        chunks = query_memory(
+            vector=query_embedding,
+            filter_dict=workspace_memory_filter(workspace_id),
+            top_k=top_k,
+            min_score=min_similarity,
+        )
     except Exception as e:
-        print(f"[memory] workspace retrieve RPC failed: {e}", flush=True)
+        print(f"[memory] pinecone workspace retrieve failed: {e}", flush=True)
         traceback.print_exc()
         return []
 
-    chunks = result.data or []
     if not chunks:
         print(
             f"[memory] workspace retrieve workspace={workspace_id} hits=0 "

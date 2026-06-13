@@ -1,4 +1,4 @@
-"""Embed channel messages into memory_items (bge-small-en-v1.5, 384d via fastembed)."""
+"""Embed channel messages into Pinecone + memory_items catalog (384d fastembed)."""
 
 import os
 import traceback
@@ -6,6 +6,11 @@ from functools import lru_cache
 from typing import Any
 
 from db import get_supabase
+from memory.pinecone_store import (
+    build_pinecone_metadata,
+    memory_vector_id,
+    upsert_with_rollback_on_failure,
+)
 from workspace_settings import fetch_workspace_settings
 
 EMBEDDING_DIM = 384
@@ -71,20 +76,39 @@ def _upsert_memory_item(
     memory_tier: str,
     thread_id: str | None,
 ) -> None:
-    supabase.table("memory_items").upsert(
-        {
-            "workspace_id": workspace_id,
-            "channel_id": channel_id,
-            "source_type": "message",
-            "source_id": message_id,
-            "content": content,
-            "embedding": embedding,
-            "metadata": metadata,
-            "memory_tier": memory_tier,
-            "thread_id": thread_id,
-        },
-        on_conflict="source_type,source_id,memory_tier",
-    ).execute()
+    vector_id = memory_vector_id(message_id, memory_tier)
+    pinecone_meta = build_pinecone_metadata(
+        workspace_id=workspace_id,
+        channel_id=channel_id,
+        memory_tier=memory_tier,
+        source_id=message_id,
+        source_type="message",
+        content=content,
+        metadata=metadata,
+        thread_id=thread_id,
+    )
+
+    def _write_catalog() -> None:
+        supabase.table("memory_items").upsert(
+            {
+                "workspace_id": workspace_id,
+                "channel_id": channel_id,
+                "source_type": "message",
+                "source_id": message_id,
+                "content": content,
+                "metadata": metadata,
+                "memory_tier": memory_tier,
+                "thread_id": thread_id,
+            },
+            on_conflict="source_type,source_id,memory_tier",
+        ).execute()
+
+    upsert_with_rollback_on_failure(
+        vector_id,
+        embedding,
+        pinecone_meta,
+        _write_catalog,
+    )
 
 
 def embed_message_row(

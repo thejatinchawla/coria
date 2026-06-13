@@ -12,3 +12,4 @@ langgraph>=0.2,<2
 langchain-core>=0.3,<0.4
 langchain-groq>=0.2,<0.4
 langchain-anthropic>=0.3,<1.0
+pinecone>=5.0

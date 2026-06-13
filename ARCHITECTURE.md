@@ -175,11 +175,11 @@ Next.js routes under `coria/app/api/settings/*` authenticate the user, then prox
 ### Context assembly (order)
 
 1. Thread messages (if `thread_id`)
-2. Channel RAG — `memory_items` pgvector, channel tier
-3. Workspace RAG — if `agents.use_workspace_memory`
+2. Channel RAG — Pinecone index, `memory_tier=channel`, filtered by `channel_id`
+3. Workspace RAG — if `agents.use_workspace_memory` (Pinecone, `memory_tier=workspace`)
 4. Recent channel messages fallback
 
-Embeddings: fastembed (`BAAI/bge-small-en-v1.5`, 384d), written on send via `/memory/embed`.
+Embeddings: fastembed (`BAAI/bge-small-en-v1.5`, 384d), written on send via `/memory/embed`. Vectors live in **Pinecone**; Postgres `memory_items` is the content/metadata catalog (no embedding column).
 
 ### LLM
 
@@ -267,7 +267,7 @@ Core tables (see migrations in `backend/supabase/migrations/`):
 | Chat         | `channels`, `messages` (threads, pins, `reply_count`)                                   |
 | Agents       | `agents`, `agent_triggers`                                                              |
 | Trust        | `workspace_settings`, `tool_policies`, `action_blocks`, `audit_log`, `reasoning_traces` |
-| Memory       | `memory_items` (channel / workspace tiers, pgvector)                                    |
+| Memory       | Pinecone index + `memory_items` catalog (channel / workspace tiers)                     |
 | Integrations | `integrations` (`github`, `llm` — secrets in Vault)                                     |
 
 
